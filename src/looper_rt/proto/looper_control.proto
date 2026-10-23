@@ -1,0 +1,514 @@
+// Control protocol between a running simulation and a host side client.
+//
+// The simulation is the server. A client sends one Request and receives
+// exactly one Response with the same id. Frames are length prefixed with a
+// four byte little endian length.
+
+syntax = "proto3";
+
+package looper.control;
+
+// What a client asks the simulation to do.
+enum Command {
+  COMMAND_UNSPECIFIED = 0;
+  // Identify the simulation and report its time mode.
+  COMMAND_HELLO = 1;
+  // Read the firmware's current elapsed time.
+  COMMAND_READ_TIME = 2;
+  // List every pin the firmware has registered.
+  COMMAND_LIST_PINS = 3;
+  // Apply an electrical level to an input pin.
+  COMMAND_DRIVE_PIN = 4;
+  // Advance the virtual clock. Rejected in real time mode.
+  COMMAND_ADVANCE_TIME = 5;
+  // Read the recorded adapter calls.
+  COMMAND_READ_JOURNAL = 6;
+  // Discard the recorded adapter calls.
+  COMMAND_CLEAR_JOURNAL = 7;
+  // List every analog channel the firmware has registered.
+  COMMAND_LIST_CHANNELS = 8;
+  // Install the signal that drives an analog input.
+  COMMAND_SET_SIGNAL = 9;
+  // Read the recorded analog samples after a sequence number.
+  COMMAND_READ_TRACE = 10;
+  // Discard the recorded analog samples.
+  COMMAND_CLEAR_TRACE = 11;
+  // List every firmware variable the simulation is sampling.
+  COMMAND_LIST_WATCHES = 12;
+  // Start sampling a firmware variable into the trace.
+  COMMAND_WATCH_VARIABLE = 13;
+  // Stop sampling a watched variable.
+  COMMAND_REMOVE_WATCH = 14;
+  // Write a value into a watched firmware variable.
+  COMMAND_WRITE_VARIABLE = 15;
+  // List the buses the simulation models.
+  COMMAND_LIST_BUSES = 16;
+  // Read what has crossed those buses since a sequence number.
+  COMMAND_READ_BUS_TRACE = 17;
+  // Discard the recorded exchanges.
+  COMMAND_CLEAR_BUS_TRACE = 18;
+  // Put one message on a bus for the firmware to receive.
+  COMMAND_SEND_BUS_MESSAGE = 19;
+  // List the components attached to those buses.
+  COMMAND_LIST_COMPONENTS = 20;
+  // Read how often each adapter call was made, how long it took, and
+  // whether anything implemented it.
+  COMMAND_READ_TIMINGS = 23;
+  // Forget the measurements and start again.
+  COMMAND_CLEAR_TIMINGS = 24;
+  // Read where the whole simulation spent its time, function by function,
+  // for the parts of it that were built with instrumentation.
+  COMMAND_READ_PROFILE = 25;
+  // Forget the profile and start the window again.
+  COMMAND_CLEAR_PROFILE = 26;
+  // Read what the firmware has asked the allocator for.
+  COMMAND_READ_HEAP = 27;
+  // Forget the counts and start the peak again. What is still out is
+  // not forgotten: it is still out.
+  COMMAND_CLEAR_HEAP = 28;
+  // Read when the pins changed level, after a sequence number. The
+  // pin model says what every pin is now; this says when it became
+  // that, which is the question a bus raises: did the chip select go
+  // low before the first clock.
+  COMMAND_READ_PIN_TRACE = 29;
+  // Discard the recorded level changes.
+  COMMAND_CLEAR_PIN_TRACE = 30;
+  // Read the tree of call paths, after a position. A flame graph is
+  // drawn from this; the ranking needs only COMMAND_READ_PROFILE.
+  COMMAND_READ_PROFILE_PATHS = 31;
+  // Begin, or stop, following which way the calls go. Following them
+  // costs more than everything else the hooks do, so it is armed by
+  // whoever wants the picture rather than left on.
+  COMMAND_WATCH_PROFILE_PATHS = 32;
+  // Take the part of a peer on a bus the firmware does not master.
+  COMMAND_ATTACH_COMPONENT = 21;
+  // Stop taking it.
+  COMMAND_DETACH_COMPONENT = 22;
+}
+
+// What the bytes at a watched variable's address mean.
+enum VariableEncoding {
+  VARIABLE_ENCODING_UNSPECIFIED = 0;
+  VARIABLE_ENCODING_SIGNED = 1;
+  VARIABLE_ENCODING_UNSIGNED = 2;
+  VARIABLE_ENCODING_FLOAT = 3;
+  VARIABLE_ENCODING_BOOLEAN = 4;
+}
+
+// Shape of a generated signal.
+enum Waveform {
+  // Uses the offset alone, which is how a DC level is expressed.
+  WAVEFORM_CONSTANT = 0;
+  WAVEFORM_SINE = 1;
+  WAVEFORM_SQUARE = 2;
+  WAVEFORM_TRIANGLE = 3;
+  WAVEFORM_SAWTOOTH = 4;
+}
+
+// Whether the firmware reads an analog channel or writes it.
+enum ChannelDirection {
+  CHANNEL_DIRECTION_UNSPECIFIED = 0;
+  CHANNEL_DIRECTION_INPUT = 1;
+  CHANNEL_DIRECTION_OUTPUT = 2;
+}
+
+// Outcome of a request.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_OK = 1;
+  STATUS_INVALID_ARGUMENT = 2;
+  STATUS_UNSUPPORTED = 3;
+}
+
+// How simulated time advances.
+enum TimeMode {
+  TIME_MODE_UNSPECIFIED = 0;
+  // Advances only when every firmware thread is blocked.
+  TIME_MODE_VIRTUAL = 1;
+  // Follows the host clock.
+  TIME_MODE_REAL = 2;
+}
+
+// Whether the firmware drives a pin or reads it.
+enum PinDirection {
+  PIN_DIRECTION_UNSPECIFIED = 0;
+  PIN_DIRECTION_INPUT = 1;
+  PIN_DIRECTION_OUTPUT = 2;
+}
+
+// Electrical level present at a pin.
+enum SignalLevel {
+  SIGNAL_LEVEL_UNSPECIFIED = 0;
+  SIGNAL_LEVEL_LOW = 1;
+  SIGNAL_LEVEL_HIGH = 2;
+}
+
+// Which electrical level the firmware treats as active.
+enum ActivePolarity {
+  ACTIVE_POLARITY_UNSPECIFIED = 0;
+  ACTIVE_POLARITY_HIGH = 1;
+  ACTIVE_POLARITY_LOW = 2;
+}
+
+// One pin as the simulation currently models it.
+message Pin {
+  uint32 id = 1;
+  string label = 2;
+  PinDirection direction = 3;
+  SignalLevel level = 4;
+  ActivePolarity polarity = 5;
+}
+
+// One moment a pin took a new level. Changes only: a pin the firmware
+// reads a thousand times without touching has one of these, not a
+// thousand.
+message PinChange {
+  uint32 pin = 1;
+  SignalLevel level = 2;
+  uint64 microseconds = 3;
+  uint32 sequence = 4;
+}
+
+// One recorded adapter call.
+message JournalEntry {
+  string function = 1;
+  uint64 microseconds = 2;
+  uint32 sequence = 3;
+}
+
+// Definition of a generated signal. Every waveform but WAVEFORM_CONSTANT
+// swings by the amplitude around the offset.
+message Signal {
+  Waveform waveform = 1;
+  double amplitude = 2;
+  double offset = 3;
+  double frequency_hz = 4;
+  double phase_degrees = 5;
+}
+
+// One analog channel as the simulation currently models it.
+message Channel {
+  uint32 id = 1;
+  string label = 2;
+  string unit = 3;
+  ChannelDirection direction = 4;
+  double value = 5;
+  Signal signal = 6;
+  // Whether anything has ever written to this channel. A channel the
+  // firmware registers but never publishes reads zero, and so does one
+  // publishing zero; the difference is usually a feature the firmware
+  // has switched off, so it is reported rather than left to be guessed.
+  bool has_value = 7;
+}
+
+// Where the running process put the image it was built as.
+//
+// Only what the process can know about itself. The base it was linked
+// against is not in that set: a relocating loader overwrites the field that
+// held it, so the only honest source is the executable file, which a client
+// reads anyway to get at the debug information. Taking both from the same
+// read is also what keeps them from disagreeing.
+message Image {
+  uint64 runtime_base = 1;
+  uint64 size = 2;
+  // Path of the running executable, which is where the debug information is.
+  string executable = 3;
+}
+
+// One firmware variable the simulation samples into the trace.
+message Watch {
+  // Trace channel the samples are recorded on, allocated by the simulation.
+  uint32 channel = 1;
+  string path = 2;
+  // Address in the running process, already relocated.
+  uint64 address = 3;
+  VariableEncoding encoding = 4;
+  uint32 byte_width = 5;
+  bool writable = 6;
+  double value = 7;
+  // A bit field shares its bytes with the bits around it. The offset is
+  // counted from the least significant bit at the address; a width of zero
+  // means the value is the whole of the bytes there.
+  uint32 bit_offset = 8;
+  uint32 bit_width = 9;
+}
+
+// Which kind of bus, which is what gives an address its meaning.
+enum BusKind {
+  BUS_KIND_UNSPECIFIED = 0;
+  BUS_KIND_SPI = 1;
+  BUS_KIND_I2C = 2;
+  BUS_KIND_UART = 3;
+  BUS_KIND_CAN = 4;
+}
+
+// Which way an exchange went, named from the firmware's point of view.
+enum BusDirection {
+  BUS_DIRECTION_UNSPECIFIED = 0;
+  BUS_DIRECTION_OUTBOUND = 1;
+  BUS_DIRECTION_INBOUND = 2;
+}
+
+// Where something sits on its bus: a chip select, a device address, a port
+// or an identifier, depending on the kind of bus it belongs to.
+message BusAddress {
+  uint32 value = 1;
+  // Only for CAN, where the same value sent as 11 or as 29 bits is two
+  // different identifiers on the wire.
+  bool extended = 2;
+}
+
+// One bus the simulation models.
+message Bus {
+  uint32 id = 1;
+  BusKind kind = 2;
+  string label = 3;
+  // Rate the firmware configured, zero when it has not set one.
+  uint32 bitrate_bps = 4;
+}
+
+// One simulated device attached to a bus.
+//
+// Only what it is and where it sits. A component answers the firmware at the
+// speed the firmware runs, so its behaviour is simulated in that process and
+// never travels over this protocol.
+message Component {
+  uint32 bus = 1;
+  BusAddress address = 2;
+  string label = 3;
+  string model = 4;
+  // Analog channels this component publishes. A property is not a new kind
+  // of thing: it is a value with a name and a unit that a client reads,
+  // plots and sometimes drives, which is what a channel already is.
+  repeated uint32 properties = 5;
+}
+
+// One exchange as it was recorded.
+message BusRecord {
+  uint32 bus = 1;
+  BusKind kind = 2;
+  BusDirection direction = 3;
+  BusAddress address = 4;
+  // What the firmware sent, and what came back in the same breath on the
+  // kinds that answer at once. A UART byte and a CAN frame fill one of them.
+  bytes payload = 5;
+  bytes response = 6;
+  // False when nothing took the exchange: no component at that address, or
+  // a controller's filters turned the frame away.
+  bool accepted = 7;
+  uint64 microseconds = 8;
+  uint32 sequence = 9;
+}
+
+// What was measured of one function at the adapter boundary.
+//
+// The durations are host time, not the time the call would take on the
+// target, and are there to say what the simulation costs and which model
+// became expensive. The firmware's own timing is a different question, and
+// the journal's simulated timestamps answer it.
+message Timing {
+  string function = 1;
+  uint64 calls = 2;
+  // Calls something implemented: a hook, or a binding generated from a
+  // contract role. The difference from calls is how often the firmware was
+  // handed the zero value and believed it.
+  uint64 answered_calls = 3;
+  uint64 total_nanoseconds = 4;
+  uint64 shortest_nanoseconds = 5;
+  uint64 longest_nanoseconds = 6;
+  // How many calls fell into each band of duration, band n holding
+  // everything from 2^n nanoseconds up to 2^(n+1). The shape of the
+  // thing, which no average carries: one narrow hump is a function
+  // that does one thing, two humps are two paths through it, and a
+  // hump with a long tail is one that occasionally blocks. Sent in
+  // order, so the position is the band.
+  repeated uint32 bands = 7;
+}
+
+// What was measured of one instrumented function.
+//
+// Only the address is sent. Which function it is, and which source file it
+// was compiled from, the client reads out of the debug information the
+// executable already carries -- so nothing here has to hold a string table
+// on a path that runs on every call.
+// One function, reached one way. The tree these form is what a flame
+// graph is drawn from: a function called from three places has one
+// Profile and three of these, and which of the three is expensive is
+// usually the question.
+message ProfilePath {
+  // Where the function sits in the running process.
+  uint64 address = 1;
+  // The node this was called from. Zero is the root, which is not a
+  // function and is never sent.
+  uint32 parent = 2;
+  uint64 calls = 3;
+  // Host time between entry and return, with callees included.
+  uint64 total_nanoseconds = 4;
+  // The same with the time spent in callees taken away.
+  uint64 self_nanoseconds = 5;
+}
+
+message Profile {
+  // Where the function sits in the running process. The client subtracts
+  // the image slide to get the address its debug information names.
+  uint64 address = 1;
+  uint64 calls = 2;
+  // Host time between entry and return, with callees included.
+  uint64 total_nanoseconds = 3;
+  // The same with the time spent in callees taken away. Self times add up
+  // across functions; totals do not, because a caller's total contains its
+  // callees'.
+  uint64 self_nanoseconds = 4;
+  uint64 longest_nanoseconds = 5;
+  // Largest stack frame of this function that was seen, in host bytes.
+  // Another machine lays a frame out differently; what does carry over
+  // is a large local buffer, which is the same size wherever it is.
+  uint64 frame_bytes = 6;
+}
+
+// What is still out from one place in the code.
+message HeapSite {
+  // Where in the running process the allocation was made. The client
+  // subtracts the image slide and looks the address up, the same way
+  // it does for a profile.
+  uint64 site = 1;
+  uint64 blocks = 2;
+  uint64 bytes = 3;
+}
+
+// What has passed through the allocator.
+message Heap {
+  uint64 allocations = 1;
+  uint64 frees = 2;
+  uint64 failures = 3;
+  uint64 live_bytes = 4;
+  uint64 peak_bytes = 5;
+  // Blocks freed that were allocated before anyone was looking, plus
+  // any the table had no room to follow. Counted rather than
+  // subtracted, so the live figure cannot drift below nothing.
+  uint64 untracked_blocks = 6;
+  // Whether this build was linked with the wrappers at all. Without
+  // them nothing here means anything, and a client has to say so
+  // rather than report that nothing was allocated.
+  bool is_watched = 7;
+  repeated HeapSite outstanding = 8;
+}
+
+// One recorded value of one analog channel.
+message Sample {
+  uint32 channel = 1;
+  uint64 microseconds = 2;
+  double value = 3;
+  uint32 sequence = 4;
+}
+
+// A client request. Fields not relevant to the command are ignored.
+message Request {
+  uint32 id = 1;
+  Command command = 2;
+  // COMMAND_DRIVE_PIN: pin to drive and level to apply.
+  uint32 pin = 3;
+  SignalLevel level = 4;
+  // COMMAND_ADVANCE_TIME: duration to advance the virtual clock by.
+  uint64 microseconds = 5;
+  // COMMAND_SET_SIGNAL: channel to drive and the signal to drive it with.
+  uint32 channel = 6;
+  Signal signal = 7;
+  // COMMAND_READ_TRACE: sequence number the client has already seen.
+  uint32 after_sequence = 8;
+  // COMMAND_WATCH_VARIABLE: the variable to sample. The channel is allocated
+  // by the simulation and comes back in the response.
+  uint64 address = 9;
+  VariableEncoding encoding = 10;
+  uint32 byte_width = 11;
+  string path = 12;
+  bool writable = 13;
+  uint32 bit_offset = 15;
+  uint32 bit_width = 16;
+  // COMMAND_WRITE_VARIABLE: value to store, in the channel's variable.
+  double value = 14;
+  // COMMAND_SEND_BUS_MESSAGE: the bus, where to address the message, and
+  // the bytes it carries.
+  uint32 bus = 17;
+  BusAddress bus_address = 18;
+  bytes payload = 19;
+  // COMMAND_ATTACH_COMPONENT: what to call the peer in the listing.
+  string label = 20;
+  // COMMAND_WATCH_PROFILE_PATHS: whether to follow them.
+  bool watching = 21;
+}
+
+// The answer to exactly one request.
+message Response {
+  // Version of this schema the runtime was built against, answered on
+  // COMMAND_HELLO. A runtime built before the protocol carried a version
+  // leaves this zero, which is the case a client has to tell apart: it
+  // means "too old to say", not "version zero".
+  uint32 protocol_version = 31;
+  uint32 id = 1;
+  Status status = 2;
+  // Human readable detail, set when status is not STATUS_OK.
+  string message = 3;
+  // Elapsed firmware time at the moment the request was served.
+  uint64 microseconds = 4;
+  TimeMode time_mode = 5;
+  repeated Pin pins = 6;
+  repeated JournalEntry journal = 7;
+  // Name the simulated firmware reports in its hello response.
+  string firmware = 8;
+  repeated Channel channels = 9;
+  repeated Sample samples = 10;
+  // Sequence number the next recorded sample will carry, so a client can ask
+  // for what comes after without guessing.
+  uint32 next_sequence = 11;
+  // COMMAND_HELLO: where the image is, so that a client can translate the
+  // addresses its debug information names.
+  Image image = 12;
+  // COMMAND_LIST_WATCHES and COMMAND_WATCH_VARIABLE.
+  repeated Watch watches = 13;
+  // COMMAND_LIST_BUSES.
+  repeated Bus buses = 14;
+  // COMMAND_READ_BUS_TRACE. The next sequence number is reported in
+  // next_bus_sequence rather than in next_sequence, because the analog trace
+  // and the bus recording are numbered independently.
+  repeated BusRecord exchanges = 15;
+  uint32 next_bus_sequence = 16;
+  // COMMAND_LIST_COMPONENTS.
+  repeated Component components = 17;
+  // COMMAND_READ_TIMINGS.
+  repeated Timing timings = 18;
+  // COMMAND_READ_PROFILE. A window of profiling holds more functions than
+  // one frame carries, so this pages like the traces do: next_sequence is
+  // the position to ask for next, and equals the count when it is done.
+  repeated Profile profiles = 19;
+  // Measurements the table had no room for. A profile that silently
+  // dropped them would put their time into nobody's column.
+  uint64 lost_profiles = 20;
+  // Whether this build was compiled with instrumentation at all, so that
+  // an empty profile is told apart from a build that cannot make one.
+  bool profiling = 21;
+  // COMMAND_READ_PROFILE. How deep the stack went over the window, and
+  // which calls were open at that moment -- outermost first, as
+  // addresses the client resolves like any other.
+  uint64 stack_deepest_bytes = 22;
+  uint32 stack_deepest_depth = 23;
+  repeated uint64 stack_path = 24;
+  // Whether the whole of that path was remembered, or only as many
+  // frames as there was room for.
+  bool stack_path_complete = 25;
+  // COMMAND_READ_HEAP.
+  Heap heap = 26;
+  // COMMAND_READ_PIN_TRACE. The next sequence number is reported in
+  // next_sequence, as the analog trace does.
+  repeated PinChange pin_changes = 27;
+  // COMMAND_READ_PROFILE_PATHS. Pages like the profile does, and the
+  // index of a node is its position in the whole tree rather than in
+  // the page, so that a parent read in an earlier page can be found.
+  repeated ProfilePath profile_paths = 28;
+  // Paths the tree had no room for. A flame graph missing a branch
+  // should say so rather than look complete.
+  uint64 lost_profile_paths = 29;
+  // Whether the paths are being followed at all, so that an empty
+  // tree is told from one nobody asked for.
+  bool watching_profile_paths = 30;
+}
