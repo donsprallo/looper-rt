@@ -1,8 +1,10 @@
 # The control protocol
 
-A running simulation is a server. A client connects over TCP on the loopback
-interface, sends one request, and receives exactly one response carrying the
-same id.
+A simulation started with `--control` speaks the protocol over its standard
+input and output. Its one client is the tool that started it: `looper-cli run`
+writes a request to the simulation's standard input and reads exactly one
+response, carrying the same id, from its standard output. Everybody else --
+windows, tests -- talks to that tool, not to the simulation.
 
 The schema is `proto/looper_control.proto`.
 
@@ -17,7 +19,7 @@ length:
 +--------------------+---------------------------+
 ```
 
-A frame is at most 8192 bytes. Both sides reject anything larger rather than
+A frame is at most 32768 bytes. Both sides reject anything larger rather than
 allocating on a peer's word.
 
 ## Commands
@@ -62,22 +64,24 @@ Four refusals are part of the contract rather than errors:
 - `COMMAND_WRITE_VARIABLE` on a `const` variable, or with a value the variable
   cannot hold, answers `STATUS_INVALID_ARGUMENT`.
 
-## Several clients
+## One client
 
-The simulation accepts up to eight connections and serves each of them one
-request per pass of the firmware loop. One request each rather than all of
-them: a client asking faster than the firmware runs would otherwise be
-answered over and over while the firmware stood still.
+The simulation serves one request per pass of the firmware loop. A client
+asking faster than the firmware runs therefore waits for the firmware rather
+than the firmware standing still for it.
 
-There is one simulation behind all of them and no notion of a client that
-owns it. Whoever clears a recording clears it for everybody, and whoever
-drives a pin drives it for everybody. The one thing a client keeps to
-itself is where it has read up to, because the sequence numbers it hands
-back are its own.
+Several windows and tests may look at one simulation, but they do so through
+the tool, which is the only client the simulation has. Whatever they do acts
+on the one simulation: whoever clears a recording clears it for everybody.
 
-Nothing blocks. A request that has not completely arrived is left on its
-socket and looked at again on the next pass, so a client that connects and
-says nothing costs the firmware nothing.
+Nothing blocks on reading. A request that has only partly arrived is kept
+and completed on a later pass, so a tool that says nothing costs the
+firmware nothing. When the tool goes away its end of the pipe closes, and
+the simulation ends its loop: there is nobody left to answer.
+
+Opening the channel takes standard output away from the firmware. What it
+prints goes to the error stream instead, so a stray `printf` never lands in
+the middle of a frame.
 
 ## Watching a firmware variable
 
@@ -184,26 +188,10 @@ rebuild the simulation.
 
 ## Talking to a simulation
 
-```python
-from looper.infrastructure.ipc import ProtobufSimulationSession
-from looper.domain.model.simulation import SignalLevel
+Nobody but `looper-cli run` talks to a simulation directly. It starts the
+executable with `--control`, holds the session on its pipes, and serves the
+inspector contract over gRPC to everybody else.
 
-with ProtobufSimulationSession(port=45771) as session:
-    print(session.time_mode)
-
-    for pin in session.read_gpio_pins():
-        print(pin.identifier.display_name, pin.level, pin.is_active)
-
-    button = next(pin for pin in session.read_gpio_pins() if pin.is_drivable_by_client)
-    session.drive_input_pin(button.identifier, SignalLevel.LOW)
-
-    for entry in session.read_journal():
-        print(entry.function, entry.microseconds)
-```
-
-`ProtobufSimulationSession` implements the abstract `SimulationSession` port, so
-use cases and the graphical client never import it directly. A test substitutes
-a fake implementation of the same port and needs no process at all.
-
-One request is answered by one response, which makes a session unsafe to share
-between threads. The graphical client keeps it on a worker thread.
+One request is answered by one response, which makes the session unsafe to
+share between threads. The tool keeps it on one thread and lets every other
+caller queue for it.

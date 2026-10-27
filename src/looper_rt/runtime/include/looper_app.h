@@ -76,8 +76,13 @@ typedef struct {
 /**
  * @brief Run a simulation until it is told to stop.
  *
- * Understands `--virtual`, `--port N` and `--steps N`. Without `--steps` the
+ * Understands `--virtual`, `--control` and `--steps N`. Without `--steps` the
  * loop runs until the process is stopped.
+ *
+ * `--control` opens the control channel on standard input and output, see
+ * looper_channel.h. That is how the tool starts a simulation, and the loop
+ * then also ends when the channel closes. Without it the firmware runs on
+ * its own, in a debugger for instance.
  *
  * @param argc Argument count as main received it.
  * @param argv Arguments as main received it.

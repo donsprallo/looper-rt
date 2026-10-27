@@ -10,13 +10,13 @@
 #include "looper_binding.h"
 #include "looper_bus.h"
 #include "looper_can.h"
+#include "looper_channel.h"
 #include "looper_gpio_model.h"
 #include "looper_heap.h"
 #include "looper_profile.h"
 #include "looper_timing.h"
 #include "looper_uart.h"
 #include "looper_journal.h"
-#include "looper_server.h"
 #include "looper_trace.h"
 #include "looper_watch.h"
 
@@ -26,20 +26,19 @@
 /** @brief What the command line asked for. */
 typedef struct {
     looper_time_mode_t mode;
-    uint16_t port;
+    bool control;
     unsigned long steps;
 } options_t;
 
 static options_t parse_options(int argc, char **argv)
 {
-    options_t options = {LOOPER_TIME_MODE_REAL, (uint16_t)LOOPER_DEFAULT_PORT, UNLIMITED_STEPS};
+    options_t options = {LOOPER_TIME_MODE_REAL, false, UNLIMITED_STEPS};
 
     for (int index = 1; index < argc; index++) {
         if (strcmp(argv[index], "--virtual") == 0) {
             options.mode = LOOPER_TIME_MODE_VIRTUAL;
-        } else if (strcmp(argv[index], "--port") == 0 && index + 1 < argc) {
-            index++;
-            options.port = (uint16_t)strtoul(argv[index], NULL, 10);
+        } else if (strcmp(argv[index], "--control") == 0) {
+            options.control = true;
         } else if (strcmp(argv[index], "--steps") == 0 && index + 1 < argc) {
             index++;
             options.steps = strtoul(argv[index], NULL, 10);
@@ -138,6 +137,31 @@ static uint32_t idle_microseconds(const looper_application_t *application)
     return application->idle_microseconds;
 }
 
+/*
+ * Whether the loop goes on.
+ *
+ * A simulation started with a control channel ends once its tool has gone
+ * away: there is nobody left to answer, and a firmware left running with
+ * nobody to stop it is only in the way.
+ */
+static bool keeps_running(const options_t *options, unsigned long completed)
+{
+    if (options->control && !looper_channel_is_open()) {
+        return false;
+    }
+    return options->steps == UNLIMITED_STEPS || completed < options->steps;
+}
+
+/** @brief Open the control channel if one was asked for. */
+static bool open_channel(const options_t *options, const char *name)
+{
+    if (!options->control || looper_channel_open(name)) {
+        return true;
+    }
+    fprintf(stderr, "%s: could not take over standard input and output\n", name);
+    return false;
+}
+
 int looper_main(int argc, char **argv, const looper_application_t *application)
 {
     options_t options;
@@ -152,19 +176,14 @@ int looper_main(int argc, char **argv, const looper_application_t *application)
     options = parse_options(argc, argv);
     prepare(application, options.mode);
 
-    if (!looper_server_start(options.port, application->name)) {
-        fprintf(
-            stderr, "%s: could not listen on port %u\n", application->name, (unsigned)options.port
-        );
+    if (!open_channel(&options, application->name)) {
         return EXIT_FAILURE;
     }
-    printf("%s listening on port %u\n", application->name, (unsigned)options.port);
-    fflush(stdout);
 
     running = start_firmware(application);
     idle = idle_microseconds(application);
-    while (options.steps == UNLIMITED_STEPS || completed < options.steps) {
-        looper_server_poll();
+    while (keeps_running(&options, completed)) {
+        looper_channel_poll();
         if (running) {
             /*
              * The headline number: what one pass of the firmware costs on
@@ -180,6 +199,6 @@ int looper_main(int argc, char **argv, const looper_application_t *application)
         completed++;
     }
 
-    looper_server_stop();
+    looper_channel_close();
     return EXIT_SUCCESS;
 }

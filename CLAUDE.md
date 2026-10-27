@@ -14,7 +14,7 @@ Fenster in `looper-gui`.
 - **Keine Drittbibliotheken.** Die Runtime muss ueberall kompilieren, wo ein
   Firmware-Projekt kompiliert. Das gilt ausdruecklich auch fuer protobuf: der
   Codec in `looper_pb.c` ist von Hand geschrieben, und das bleibt so.
-- **Nur C11 und die Standardbibliothek**, plus die Sockets der Plattform.
+- **Nur C11 und die Standardbibliothek**, plus die Sockets und Pipes der Plattform.
 - Die Runtime kennt `looper-core` nicht. Die Abhaengigkeit laeuft in eine
   Richtung, und dieses Repository steht am inneren Ende.
 
@@ -30,8 +30,9 @@ nicht kennt.
 
 ## 3. Code-Qualitaet
 - **Warnungsfrei bei `-Wall -Wextra -Werror`.** Der Beispiel-Build erzwingt es.
-- **Eine Verantwortung pro Datei.** `looper_server.c` kennt nur Sockets und
-  Framing, `looper_commands.c` nur, was ein Befehl tut, `looper_pb.c` nur die
+- **Eine Verantwortung pro Datei.** `looper_channel.c` kennt nur den Kanal,
+  `looper_channel_frames.c` nur das Framing, `looper_channel_pipe.c` nur die
+  Pipes der Plattform, `looper_commands.c` nur, was ein Befehl tut, `looper_pb.c` nur die
   Kodierung. Diese Trennung ist der Grund, warum die Dateien klein bleiben.
 - **Keine dynamische Allokation im Antwortpfad.** Puffer sind statisch und ihre
   Kapazitaet steht als Konstante im Kopf der Datei.

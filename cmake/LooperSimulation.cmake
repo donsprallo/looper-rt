@@ -109,11 +109,15 @@ function(looper_add_simulation target)
     target_compile_definitions(${target} PRIVATE ${LOOPER_COMPILE_DEFINITIONS})
     target_compile_options(${target} PRIVATE ${LOOPER_COMPILE_OPTIONS})
 
-    # Instrumentation, when the definition asks for it. Safe to put on the
-    # whole target: the options carry their own exclusion list, naming the
-    # generated directory and looper's own sources by path, so the same
-    # files are woven here as in a looper-cli build.
-    target_compile_options(${target} PRIVATE ${LOOPER_INSTRUMENT_OPTIONS})
+    # Instrumentation, when the definition asks for it, on the project's
+    # own sources only. The generated adapter is measured at its boundary
+    # and the runtime and components are libraries of their own, so these
+    # are the same files a looper-cli build weaves. Set per source rather
+    # than excluded by path, because clang has no exclusion option.
+    if (LOOPER_INSTRUMENT_OPTIONS)
+        set_property(SOURCE ${project_sources} TARGET_DIRECTORY ${target}
+            APPEND PROPERTY COMPILE_OPTIONS ${LOOPER_INSTRUMENT_OPTIONS})
+    endif ()
 
     # Putting looper in front of the allocator, when the definition asks.
     # A link option: it changes no code, only which malloc a call reaches.

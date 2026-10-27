@@ -14,6 +14,9 @@ add_library(looperRuntime STATIC
     src/looper_bus_trace.c
     src/looper_can.c
     src/looper_can_wire.c
+    src/looper_channel.c
+    src/looper_channel_frames.c
+    src/looper_channel_pipe.c
     src/looper_clock.c
     src/looper_commands.c
     src/looper_commands_bus.c
@@ -39,8 +42,6 @@ add_library(looperRuntime STATIC
     src/looper_protocol_memory.c
     src/looper_protocol_encode.c
     src/looper_protocol_encode_memory.c
-    src/looper_server.c
-    src/looper_server_frames.c
     src/looper_socket.c
     src/looper_socket_datagram.c
     src/looper_spi.c

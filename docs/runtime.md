@@ -3,7 +3,8 @@
 The generator produces adapter functions that forward to hooks. The runtime is
 what those hooks usually talk to: a clock, a pin model, a call journal, and a
 control channel. It ships inside the package as `looper/runtime/` and is
-plain C11 with no dependencies beyond the sockets the platform provides.
+plain C11 with no dependencies beyond the sockets and pipes the platform
+provides.
 
 Generated code does **not** depend on the runtime. A test that only installs
 hooks links the generated sources alone. The runtime enters the picture when a
@@ -109,35 +110,35 @@ default) and keeps the most recent calls.
 ## The control channel
 
 ```c
-looper_server_start(45771u, "blinky");
+looper_channel_open("blinky");
 
-while (running) {
-    looper_server_poll();
+while (looper_channel_is_open()) {
+    looper_channel_poll();
     app_step();
 }
 ```
 
-Command handling lives in `looper_commands.c`, separate from the socket
-transport, so the behaviour of each command can be exercised by building a
-request and inspecting the response without a connection.
+The channel is the simulation's standard input and output, and its one client
+is the tool that started it; see [One client](protocol.md#one-client). Opening
+it points what the firmware prints at the error stream, so output and frames
+never mix.
 
-`looper_server_poll` is deliberately not threaded and never blocks. It accepts
-whoever is waiting, serves at most one pending request per attached client, and
-returns. The firmware loop stays the only thread in the process, which means a
-virtual clock cannot drift under a client and a debugger shows one call stack.
+Command handling lives in `looper_commands.c`, separate from the transport, so
+the behaviour of each command can be exercised by building a request and
+inspecting the response without a process on the other end.
 
-Up to eight clients may be attached at once — two windows, or a window beside a
-test. They are all equal and all act on the one simulation; see [Several
-clients](protocol.md#several-clients). A request that has not completely
-arrived is left on its socket and looked at again next pass, so a client that
-connects and says nothing costs nothing.
+`looper_channel_poll` is deliberately not threaded and never blocks on
+reading. It serves at most one pending request and returns. The firmware loop
+stays the only thread in the process, which means a virtual clock cannot drift
+under a client and a debugger shows one call stack. A request that has only
+partly arrived is kept and completed on a later pass.
 
 The cost is equally plain: a firmware that blocks for a second does not answer
 for a second. That is a true picture of the firmware rather than an artefact of
 the tooling.
 
-`looper_socket.h` is the half dozen socket calls both the control channel and
-the bridges use, with the platform difference settled in one place and
+`looper_socket.h` is the half dozen socket calls the bridges and the network
+components use, with the platform difference settled in one place and
 everything non blocking.
 
 `looper_profile.h` and `looper_heap.h` are the two measuring parts: the first
@@ -156,8 +157,9 @@ anybody is reading it. See
 ## The entry point
 
 Everything a simulation does around the firmware is the same in every
-project: parse `--virtual`, `--port` and `--steps`, start the clock, open the
-control channel, and run a loop that polls it. `looper_app.c` is that part,
+project: parse `--virtual`, `--control` and `--steps`, start the clock, open the
+control channel when `--control` asks for it, and run a loop that polls it
+until the channel closes. `looper_app.c` is that part,
 and a project supplies only what is its own:
 
 ```c
@@ -201,5 +203,5 @@ $ gcc -std=c11 -DLOOPER_JOURNAL -o sim \
       -Ibuild/generated -I$LOOPER_RUNTIME/include -IInc -Isrc -lws2_32
 ```
 
-`-lws2_32` is needed on Windows for the sockets; on Linux and macOS nothing
+`-lws2_32` is needed on Windows for the sockets the bridges and components use; on Linux and macOS nothing
 extra is required.
