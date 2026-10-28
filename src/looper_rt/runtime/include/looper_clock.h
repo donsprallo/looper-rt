@@ -2,9 +2,12 @@
  * @file
  * @brief The simulated firmware clock.
  *
- * Time has two sources. In @ref LOOPER_TIME_MODE_VIRTUAL the clock stands
- * still until the firmware waits or a client advances it, which makes a test
- * run deterministic and independent of host load. In
+ * Time has two sources. In @ref LOOPER_TIME_MODE_VIRTUAL the clock moves
+ * only when the firmware waits -- and every pass of the firmware loop waits
+ * for its idle time -- or a client advances it, which makes a run
+ * deterministic and independent of host load. A tool that controls the
+ * simulation also holds the firmware still between the times it lets pass,
+ * so that the clock stands still while the tool looks. In
  * @ref LOOPER_TIME_MODE_REAL the clock follows the host monotonic timer, which
  * is what interactive inspection needs.
  */
@@ -52,6 +55,16 @@ bool looper_clock_advance(uint64_t microseconds);
  * @param microseconds Duration to wait.
  */
 void looper_clock_wait(uint64_t microseconds);
+
+/**
+ * @brief Let the host rest for a while, whatever the time source.
+ *
+ * The clock does not move. For a loop that has nothing to do and should not
+ * spin a host core while it waits for a client.
+ *
+ * @param microseconds How long to rest on the host.
+ */
+void looper_clock_rest(uint64_t microseconds);
 
 #ifdef __cplusplus
 }

@@ -29,6 +29,7 @@ add_library(looperRuntime STATIC
     src/looper_i2c.c
     src/looper_image.c
     src/looper_journal.c
+    src/looper_pace.c
     src/looper_pb.c
     src/looper_pin_trace.c
     src/looper_profile.c

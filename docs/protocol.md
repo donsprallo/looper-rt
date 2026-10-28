@@ -58,6 +58,24 @@ Four refusals are part of the contract rather than errors:
   firmware drives its own outputs.
 - `COMMAND_ADVANCE_TIME` in real time mode answers `STATUS_UNSUPPORTED`. The
   host clock is not a thing a client steers.
+
+## Running in step
+
+A simulation started with `--virtual` and `--control` is held: the firmware
+does not run until its client lets time pass. `COMMAND_ADVANCE_TIME` releases
+it for that many microseconds, and the answer comes once the firmware has run
+through them -- carrying the time the clock reached, which is the time asked
+for or at most one idle pass beyond it. Then the firmware is held again.
+
+While it is held the simulation still answers everything else: the client
+reads what happened while the clock stands still, and nothing moves under it.
+That makes a run exact and repeatable -- one second asked for is one second
+run, however fast or loaded the host -- and two runs of the same test see the
+same thing.
+
+Without `--control` nobody could let the firmware go, so it runs freely: on a
+virtual clock each pass of the loop costs its idle time and the clock moves
+as fast as the host computes.
 - `COMMAND_WATCH_VARIABLE` with an address outside the running image answers
   `STATUS_INVALID_ARGUMENT`. An address from a stale build would otherwise
   take the firmware down.

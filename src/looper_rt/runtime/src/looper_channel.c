@@ -12,15 +12,20 @@
  */
 #include "looper_channel.h"
 
+#include <string.h>
+
 #include "looper_channel_frames.h"
 #include "looper_channel_pipe.h"
 #include "looper_commands.h"
+#include "looper_pace.h"
 #include "looper_protocol.h"
 #include "looper_watch.h"
 
 static looper_frame_reader_t reader;
 static bool channel_open = false;
 static const char *firmware_name;
+static bool advancing = false;
+static uint32_t advance_id = 0u;
 
 bool looper_channel_open(const char *firmware)
 {
@@ -30,20 +35,63 @@ bool looper_channel_open(const char *firmware)
     return channel_open;
 }
 
-/** @brief Answer the request in the reader, reusing its buffer for the reply. */
-static bool answer(size_t length)
+/** @brief Serve one request and send the reply, using the reader's buffer. */
+static bool reply(const looper_request_t *request)
 {
-    looper_request_t request;
     looper_response_t response;
     uint8_t *buffer = looper_frame_payload(&reader);
     size_t encoded = 0u;
 
-    if (!looper_protocol_decode_request(buffer, length, &request)) {
-        return false;
-    }
-    looper_commands_serve(&request, &response, firmware_name);
+    looper_commands_serve(request, &response, firmware_name);
     return looper_protocol_encode_response(&response, buffer, LOOPER_FRAME_CAPACITY, &encoded)
            && looper_frame_send(buffer, encoded);
+}
+
+/*
+ * Answer the request in the reader.
+ *
+ * Letting time pass on a held firmware is the one request not answered at
+ * once: the firmware has to run through the time first, and the answer says
+ * where the clock got to once it has.
+ */
+static bool answer(size_t length)
+{
+    looper_request_t request;
+
+    if (!looper_protocol_decode_request(looper_frame_payload(&reader), length, &request)) {
+        return false;
+    }
+    if (request.command == LOOPER_COMMAND_ADVANCE_TIME && looper_pace_is_held()) {
+        looper_pace_release(request.microseconds);
+        advancing = true;
+        advance_id = request.id;
+        return true;
+    }
+    return reply(&request);
+}
+
+/*
+ * Answer a request to let time pass, once the firmware has run through it.
+ *
+ * Nothing else is read meanwhile: the one client asked and is waiting for
+ * this answer before it asks anything else.
+ */
+static bool settle_advance(void)
+{
+    looper_request_t request;
+
+    if (looper_pace_may_run()) {
+        return false;
+    }
+    memset(&request, 0, sizeof(request));
+    request.id = advance_id;
+    request.command = LOOPER_COMMAND_READ_TIME;
+    advancing = false;
+    if (!reply(&request)) {
+        looper_channel_close();
+        return false;
+    }
+    return true;
 }
 
 bool looper_channel_poll(void)
@@ -54,6 +102,9 @@ bool looper_channel_poll(void)
     looper_watch_poll();
     if (!channel_open) {
         return false;
+    }
+    if (advancing) {
+        return settle_advance();
     }
     state = looper_frame_read(&reader, &length);
     if (state == LOOPER_FRAME_PENDING) {

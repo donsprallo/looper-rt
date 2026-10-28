@@ -133,6 +133,12 @@ stays the only thread in the process, which means a virtual clock cannot drift
 under a client and a debugger shows one call stack. A request that has only
 partly arrived is kept and completed on a later pass.
 
+On a virtual clock with a client, the loop runs in step with that client
+(`looper_pace.c`): the firmware is held until the client lets time pass, and
+the answer to that request waits until the firmware has run through it. A
+held loop keeps serving requests and rests on the host when there are none;
+see [Running in step](protocol.md#running-in-step).
+
 The cost is equally plain: a firmware that blocks for a second does not answer
 for a second. That is a true picture of the firmware rather than an artefact of
 the tooling.

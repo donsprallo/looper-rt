@@ -17,6 +17,7 @@
 #include "looper_timing.h"
 #include "looper_uart.h"
 #include "looper_journal.h"
+#include "looper_pace.h"
 #include "looper_trace.h"
 #include "looper_watch.h"
 
@@ -152,13 +153,48 @@ static bool keeps_running(const options_t *options, unsigned long completed)
     return options->steps == UNLIMITED_STEPS || completed < options->steps;
 }
 
-/** @brief Open the control channel if one was asked for. */
+/** @brief How long a held firmware's loop rests when nobody asked anything. */
+#define LOOPER_HELD_REST_MICROSECONDS 1000u
+
+/*
+ * Open the control channel if one was asked for.
+ *
+ * A virtual clock with a tool on the other end runs in step with that tool:
+ * the firmware is held until the tool lets time pass. Without a tool --
+ * in a debugger, or for a fixed number of steps -- nobody would ever let it
+ * go, so it runs freely.
+ */
 static bool open_channel(const options_t *options, const char *name)
 {
-    if (!options->control || looper_channel_open(name)) {
+    if (!options->control) {
         return true;
     }
-    fprintf(stderr, "%s: could not take over standard input and output\n", name);
+    if (!looper_channel_open(name)) {
+        fprintf(stderr, "%s: could not take over standard input and output\n", name);
+        return false;
+    }
+    if (options->mode == LOOPER_TIME_MODE_VIRTUAL) {
+        looper_pace_hold();
+    }
+    return true;
+}
+
+/*
+ * Serve the channel, and say whether the firmware may take a pass.
+ *
+ * A held firmware still answers everything asked of it; it only does not
+ * run. While nothing is asked it rests on the host rather than spinning.
+ */
+static bool serve_and_may_run(void)
+{
+    const bool served = looper_channel_poll();
+
+    if (looper_pace_may_run()) {
+        return true;
+    }
+    if (!served) {
+        looper_clock_rest(LOOPER_HELD_REST_MICROSECONDS);
+    }
     return false;
 }
 
@@ -183,7 +219,9 @@ int looper_main(int argc, char **argv, const looper_application_t *application)
     running = start_firmware(application);
     idle = idle_microseconds(application);
     while (keeps_running(&options, completed)) {
-        looper_channel_poll();
+        if (!serve_and_may_run()) {
+            continue;
+        }
         if (running) {
             /*
              * The headline number: what one pass of the firmware costs on

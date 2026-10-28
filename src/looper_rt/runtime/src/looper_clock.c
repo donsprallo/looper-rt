@@ -88,6 +88,11 @@ bool looper_clock_advance(uint64_t microseconds)
     return true;
 }
 
+void looper_clock_rest(uint64_t microseconds)
+{
+    host_sleep(microseconds);
+}
+
 void looper_clock_wait(uint64_t microseconds)
 {
     if (clock_mode == LOOPER_TIME_MODE_REAL) {
