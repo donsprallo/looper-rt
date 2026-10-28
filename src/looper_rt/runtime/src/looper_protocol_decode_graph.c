@@ -3,6 +3,8 @@
  */
 #include "looper_protocol_decode_graph.h"
 
+#include <string.h>
+
 #include "looper_protocol_fields.h"
 
 static void apply_signal_field(
@@ -77,8 +79,67 @@ static void apply_node_varint(looper_signal_node_t *node, uint32_t field, uint64
     }
 }
 
+/* One more input of a linear node; past the room there is, only counted. */
+static void append_input(looper_signal_node_t *node, uint64_t position)
+{
+    if (node->input_count < LOOPER_LINEAR_PORTS) {
+        node->inputs[node->input_count] = (uint32_t)position;
+    }
+    node->input_count++;
+}
+
+static bool decode_inputs(looper_pb_reader_t *reader, looper_signal_node_t *node, uint32_t wire_type)
+{
+    looper_pb_reader_t packed;
+    uint64_t value = 0u;
+
+    if (wire_type == LOOPER_PB_WIRE_VARINT) {
+        if (!looper_pb_read_varint(reader, &value)) {
+            return false;
+        }
+        append_input(node, value);
+        return true;
+    }
+    if (wire_type != LOOPER_PB_WIRE_LENGTH_DELIMITED || !looper_pb_read_message(reader, &packed)) {
+        return false;
+    }
+    while (!looper_pb_reader_done(&packed)) {
+        if (!looper_pb_read_varint(&packed, &value)) {
+            return false;
+        }
+        append_input(node, value);
+    }
+    return true;
+}
+
+/*
+ * A node's linear system goes into the request's table of systems, and the
+ * node keeps its place there. One past the room is decoded into a scratch
+ * system and dropped, and the request says so.
+ */
+static bool decode_system(looper_pb_reader_t *reader, looper_request_t *request, looper_signal_node_t *node)
+{
+    static looper_linear_system_t scratch;
+    looper_pb_reader_t nested;
+    looper_linear_system_t *system = &scratch;
+
+    if (request->signal_system_count < LOOPER_SIGNAL_GRAPH_SYSTEMS) {
+        system = &request->signal_systems[request->signal_system_count];
+        node->source = (uint32_t)request->signal_system_count;
+        request->signal_system_count++;
+    } else {
+        request->signal_graph_overflow = true;
+    }
+    memset(system, 0, sizeof(*system));
+    return looper_pb_read_message(reader, &nested) && looper_decode_linear_system(&nested, system);
+}
+
 static bool decode_node_field(
-    looper_pb_reader_t *reader, looper_signal_node_t *node, uint32_t field, uint32_t wire_type
+    looper_pb_reader_t *reader,
+    looper_request_t *request,
+    looper_signal_node_t *node,
+    uint32_t field,
+    uint32_t wire_type
 )
 {
     looper_pb_reader_t nested;
@@ -86,6 +147,12 @@ static bool decode_node_field(
 
     if (field == SIGNAL_NODE_FIELD_SIGNAL && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
         return looper_pb_read_message(reader, &nested) && looper_decode_signal(&nested, &node->signal);
+    }
+    if (field == SIGNAL_NODE_FIELD_LINEAR && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
+        return decode_system(reader, request, node);
+    }
+    if (field == SIGNAL_NODE_FIELD_INPUTS) {
+        return decode_inputs(reader, node, wire_type);
     }
     if (wire_type != LOOPER_PB_WIRE_VARINT) {
         return looper_pb_skip(reader, wire_type);
@@ -106,7 +173,7 @@ bool looper_decode_signal_node(looper_pb_reader_t *reader, looper_request_t *req
         uint32_t wire_type = 0u;
 
         if (!looper_pb_read_tag(reader, &field, &wire_type)
-            || !decode_node_field(reader, &node, field, wire_type)) {
+            || !decode_node_field(reader, request, &node, field, wire_type)) {
             return false;
         }
     }

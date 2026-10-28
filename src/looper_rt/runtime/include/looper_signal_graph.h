@@ -36,6 +36,21 @@ extern "C" {
 #define LOOPER_SIGNAL_GRAPH_CAPACITY 64u
 #endif
 
+#ifndef LOOPER_SIGNAL_GRAPH_SYSTEMS
+/** @brief Most linear systems one graph holds. */
+#define LOOPER_SIGNAL_GRAPH_SYSTEMS 8u
+#endif
+
+/** @brief The graph a request carries, as one argument. */
+typedef struct {
+    const looper_signal_node_t *nodes;
+    size_t node_count;
+    const looper_signal_target_t *targets;
+    size_t target_count;
+    const looper_linear_system_t *systems;
+    size_t system_count;
+} looper_signal_graph_t;
+
 /**
  * @brief Replace the graph and the inputs it drives.
  *
@@ -43,21 +58,17 @@ extern "C" {
  * them before. Inputs the old graph drove and the new one does not go back
  * to their own signal.
  *
- * @param nodes Nodes in order; an operation names only earlier positions.
- * @param node_count How many there are, at most LOOPER_SIGNAL_GRAPH_CAPACITY.
- * @param targets Which node drives which analog input.
- * @param target_count How many there are.
+ * A linear system at a position where the old graph had one of the same
+ * size keeps its state. A graph is replaced whenever a parameter moves,
+ * and a filter that forgot its state on every drag of a field would jump.
+ *
+ * @param graph Nodes in order -- a node names only earlier positions --
+ *        the targets, and the linear systems the nodes refer to.
  * @param reason Receives why the graph was refused, when it is.
  * @retval true The graph is in place.
  * @retval false It was refused; @p reason says why.
  */
-bool looper_signal_graph_set(
-    const looper_signal_node_t *nodes,
-    size_t node_count,
-    const looper_signal_target_t *targets,
-    size_t target_count,
-    const char **reason
-);
+bool looper_signal_graph_set(const looper_signal_graph_t *graph, const char **reason);
 
 /** @brief Forget the graph; every input goes back to its own signal. */
 void looper_signal_graph_clear(void);

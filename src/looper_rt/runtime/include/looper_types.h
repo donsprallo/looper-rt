@@ -198,8 +198,46 @@ typedef enum {
     /** Left times right. */
     LOOPER_SIGNAL_NODE_MULTIPLY = 7,
     /** Left divided by right, or zero where right is zero. */
-    LOOPER_SIGNAL_NODE_DIVIDE = 8
+    LOOPER_SIGNAL_NODE_DIVIDE = 8,
+    /**
+     * A discrete linear system, stepped on the simulated clock: a filter,
+     * a plant, anything a state space describes. Its value is its first
+     * output; @ref LOOPER_SIGNAL_NODE_PICK reads the others.
+     */
+    LOOPER_SIGNAL_NODE_LINEAR = 9,
+    /** One output of the linear system at position left, numbered by source. */
+    LOOPER_SIGNAL_NODE_PICK = 10
 } looper_signal_node_kind_t;
+
+/** @brief Most states one linear system has. */
+#define LOOPER_LINEAR_STATES 8u
+
+/** @brief Most inputs, and most outputs, one linear system has. */
+#define LOOPER_LINEAR_PORTS 4u
+
+/**
+ * @brief A discrete linear system in state space.
+ *
+ * x[k+1] = A x[k] + B u[k] and y[k] = C x[k] + D u[k], one step every
+ * step_microseconds of simulated time. Each matrix is row by row, as many
+ * entries as its size takes; the counts say how many arrived, so that a
+ * system whose matrices do not match its size is refused rather than read
+ * past.
+ */
+typedef struct {
+    uint32_t states;
+    uint32_t inputs;
+    uint32_t outputs;
+    uint64_t step_microseconds;
+    double a[LOOPER_LINEAR_STATES * LOOPER_LINEAR_STATES];
+    double b[LOOPER_LINEAR_STATES * LOOPER_LINEAR_PORTS];
+    double c[LOOPER_LINEAR_PORTS * LOOPER_LINEAR_STATES];
+    double d[LOOPER_LINEAR_PORTS * LOOPER_LINEAR_PORTS];
+    uint32_t a_count;
+    uint32_t b_count;
+    uint32_t c_count;
+    uint32_t d_count;
+} looper_linear_system_t;
 
 /**
  * @brief One node of a signal graph.
@@ -212,9 +250,13 @@ typedef enum {
 typedef struct {
     looper_signal_node_kind_t kind;
     looper_signal_t signal;
+    /** A source's number; a linear system's place among the systems; a pick's output. */
     uint32_t source;
     uint32_t left;
     uint32_t right;
+    /** The inputs of a linear system, by position, as many as it takes. */
+    uint32_t inputs[LOOPER_LINEAR_PORTS];
+    uint32_t input_count;
 } looper_signal_node_t;
 
 /** @brief Which node drives which analog input. */

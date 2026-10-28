@@ -63,6 +63,8 @@ typedef struct {
     size_t signal_node_count;
     looper_signal_target_t signal_targets[LOOPER_ANALOG_CAPACITY];
     size_t signal_target_count;
+    looper_linear_system_t signal_systems[LOOPER_SIGNAL_GRAPH_SYSTEMS];
+    size_t signal_system_count;
     /** More nodes or targets arrived than there is room for. */
     bool signal_graph_overflow;
 } looper_request_t;

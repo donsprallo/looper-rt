@@ -127,6 +127,25 @@ enum SignalNodeKind {
   SIGNAL_NODE_KIND_MULTIPLY = 7;
   // Zero where the right input is zero.
   SIGNAL_NODE_KIND_DIVIDE = 8;
+  // A discrete linear system stepped on the simulated clock; its value is
+  // its first output.
+  SIGNAL_NODE_KIND_LINEAR = 9;
+  // Output number `source` of the linear node at position `left`.
+  SIGNAL_NODE_KIND_PICK = 10;
+}
+
+// A discrete linear system in state space: x[k+1] = A x[k] + B u[k],
+// y[k] = C x[k] + D u[k], one step every step_microseconds. Each matrix row
+// by row, as many entries as its size takes.
+message LinearSystem {
+  uint32 states = 1;
+  uint32 inputs = 2;
+  uint32 outputs = 3;
+  uint64 step_microseconds = 4;
+  repeated double a = 5;
+  repeated double b = 6;
+  repeated double c = 7;
+  repeated double d = 8;
 }
 
 // One node of a signal graph. Which fields count depends on the kind.
@@ -138,9 +157,12 @@ message SignalNode {
   Signal signal = 2;
   // The channel, pin or watch channel a source reads.
   uint32 source = 3;
-  // The two inputs of an operation.
+  // The two inputs of an operation; for a pick, `left` is the linear node.
   uint32 left = 4;
   uint32 right = 5;
+  // SIGNAL_NODE_KIND_LINEAR: the system, and its inputs by position.
+  LinearSystem linear = 6;
+  repeated uint32 inputs = 7;
 }
 
 // Which node drives which analog input.

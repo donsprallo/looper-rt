@@ -88,13 +88,16 @@ static void serve_set_signal_graph(const looper_request_t *request, looper_respo
         response->message = "more nodes or targets than the simulation has room for";
         return;
     }
-    if (looper_signal_graph_set(
-            request->signal_nodes,
-            request->signal_node_count,
-            request->signal_targets,
-            request->signal_target_count,
-            &reason
-        )) {
+    looper_signal_graph_t graph = {
+        .nodes = request->signal_nodes,
+        .node_count = request->signal_node_count,
+        .targets = request->signal_targets,
+        .target_count = request->signal_target_count,
+        .systems = request->signal_systems,
+        .system_count = request->signal_system_count,
+    };
+
+    if (looper_signal_graph_set(&graph, &reason)) {
         return;
     }
     response->status = LOOPER_STATUS_INVALID_ARGUMENT;

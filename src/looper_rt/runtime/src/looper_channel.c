@@ -48,6 +48,13 @@ static bool reply(const looper_request_t *request)
 }
 
 /*
+ * The request being answered. Static rather than on the stack: a signal
+ * graph with its linear systems makes it ten kilobytes, and only one
+ * request is ever answered at a time.
+ */
+static looper_request_t request;
+
+/*
  * Answer the request in the reader.
  *
  * Letting time pass on a held firmware is the one request not answered at
@@ -56,8 +63,6 @@ static bool reply(const looper_request_t *request)
  */
 static bool answer(size_t length)
 {
-    looper_request_t request;
-
     if (!looper_protocol_decode_request(looper_frame_payload(&reader), length, &request)) {
         return false;
     }
@@ -78,8 +83,6 @@ static bool answer(size_t length)
  */
 static bool settle_advance(void)
 {
-    looper_request_t request;
-
     if (looper_pace_may_run()) {
         return false;
     }

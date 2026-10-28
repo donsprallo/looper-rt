@@ -25,6 +25,9 @@ bool looper_decode_signal_node(looper_pb_reader_t *reader, looper_request_t *req
 /** @brief Decode one target and append it to the request, likewise. */
 bool looper_decode_signal_target(looper_pb_reader_t *reader, looper_request_t *request);
 
+/** @brief Decode a linear system: its sizes, its step and its four matrices. */
+bool looper_decode_linear_system(looper_pb_reader_t *reader, looper_linear_system_t *system);
+
 /** @brief Decode a generated signal: waveform, amplitude, offset, frequency, phase. */
 bool looper_decode_signal(looper_pb_reader_t *reader, looper_signal_t *signal);
 

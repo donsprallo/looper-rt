@@ -40,11 +40,14 @@ add_library(looperRuntime STATIC
     src/looper_profile_table.c
     src/looper_protocol_decode.c
     src/looper_protocol_decode_graph.c
+    src/looper_protocol_decode_linear.c
     src/looper_protocol_elements.c
     src/looper_protocol_memory.c
     src/looper_protocol_encode.c
     src/looper_protocol_encode_memory.c
     src/looper_signal_graph.c
+    src/looper_signal_graph_check.c
+    src/looper_linear_system.c
     src/looper_socket.c
     src/looper_socket_datagram.c
     src/looper_spi.c
