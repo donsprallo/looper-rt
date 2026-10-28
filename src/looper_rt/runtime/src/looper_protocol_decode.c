@@ -1,8 +1,9 @@
 /*
  * Decoding of client requests.
  *
- * A request is a flat message of scalars plus one nested signal, so the
- * decoder walks fields and assigns. Unknown fields are skipped rather than
+ * A request is a flat message of scalars plus a few nested messages, so the
+ * decoder walks fields and assigns. The signal and the graph are decoded in
+ * looper_protocol_decode_graph.c. Unknown fields are skipped rather than
  * refused: a newer client talking to an older simulation should lose the
  * field it added, not the request it belongs to.
  */
@@ -10,6 +11,7 @@
 
 #include "looper_pb.h"
 #include "looper_protocol.h"
+#include "looper_protocol_decode_graph.h"
 #include "looper_protocol_fields.h"
 
 static void apply_request_watch_varint(looper_request_t *request, uint32_t field, uint64_t value)
@@ -74,58 +76,6 @@ static void apply_request_varint(looper_request_t *request, uint32_t field, uint
     }
 }
 
-static void apply_signal_field(
-    looper_signal_t *signal, uint32_t field, uint64_t integer, double real
-)
-{
-    switch (field) {
-        case SIGNAL_FIELD_WAVEFORM:
-            signal->waveform = (looper_waveform_t)integer;
-            break;
-        case SIGNAL_FIELD_AMPLITUDE:
-            signal->amplitude = real;
-            break;
-        case SIGNAL_FIELD_OFFSET:
-            signal->offset = real;
-            break;
-        case SIGNAL_FIELD_FREQUENCY:
-            signal->frequency_hz = real;
-            break;
-        case SIGNAL_FIELD_PHASE:
-            signal->phase_degrees = real;
-            break;
-        default:
-            break;
-    }
-}
-
-static bool decode_signal(looper_pb_reader_t *reader, looper_signal_t *signal)
-{
-    while (!looper_pb_reader_done(reader)) {
-        uint32_t field = 0u;
-        uint32_t wire_type = 0u;
-        uint64_t integer = 0u;
-        double real = 0.0;
-
-        if (!looper_pb_read_tag(reader, &field, &wire_type)) {
-            return false;
-        }
-        if (wire_type == LOOPER_PB_WIRE_VARINT) {
-            if (!looper_pb_read_varint(reader, &integer)) {
-                return false;
-            }
-        } else if (wire_type == LOOPER_PB_WIRE_FIXED64) {
-            if (!looper_pb_read_double(reader, &real)) {
-                return false;
-            }
-        } else if (!looper_pb_skip(reader, wire_type)) {
-            return false;
-        }
-        apply_signal_field(signal, field, integer, real);
-    }
-    return true;
-}
-
 /* Bytes, so they are taken from the nested reader's own buffer. */
 static void apply_payload(looper_request_t *request, const looper_pb_reader_t *payload)
 {
@@ -174,7 +124,15 @@ static bool decode_wide_field(
     looper_pb_reader_t nested;
 
     if (field == REQUEST_FIELD_SIGNAL && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
-        return looper_pb_read_message(reader, &nested) && decode_signal(&nested, &request->signal);
+        return looper_pb_read_message(reader, &nested)
+               && looper_decode_signal(&nested, &request->signal);
+    }
+    if (field == REQUEST_FIELD_SIGNAL_NODES && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
+        return looper_pb_read_message(reader, &nested) && looper_decode_signal_node(&nested, request);
+    }
+    if (field == REQUEST_FIELD_SIGNAL_TARGETS && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
+        return looper_pb_read_message(reader, &nested)
+               && looper_decode_signal_target(&nested, request);
     }
     if (field == REQUEST_FIELD_PATH && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
         return looper_pb_read_string(reader, request->path, sizeof(request->path));

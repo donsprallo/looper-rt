@@ -80,6 +80,9 @@ enum Command {
   // costs more than everything else the hooks do, so it is armed by
   // whoever wants the picture rather than left on.
   COMMAND_WATCH_PROFILE_PATHS = 32;
+  // Replace the signal graph: signals built from generators, from what the
+  // firmware drove, and from one another, driving analog inputs.
+  COMMAND_SET_SIGNAL_GRAPH = 33;
   // Take the part of a peer on a bus the firmware does not master.
   COMMAND_ATTACH_COMPONENT = 21;
   // Stop taking it.
@@ -103,6 +106,47 @@ enum Waveform {
   WAVEFORM_SQUARE = 2;
   WAVEFORM_TRIANGLE = 3;
   WAVEFORM_SAWTOOTH = 4;
+  // Uniform between offset - amplitude and offset + amplitude, a new
+  // value on every evaluation, the same sequence in every run.
+  WAVEFORM_NOISE = 5;
+}
+
+// What one node of a signal graph does.
+enum SignalNodeKind {
+  SIGNAL_NODE_KIND_UNSPECIFIED = 0;
+  // Produces its signal from the simulated clock.
+  SIGNAL_NODE_KIND_GENERATOR = 1;
+  // The last value of an analog channel, as the firmware left it.
+  SIGNAL_NODE_KIND_CHANNEL = 2;
+  // A pin's level: one for high, zero for low.
+  SIGNAL_NODE_KIND_PIN = 3;
+  // The last value a watched variable was read with.
+  SIGNAL_NODE_KIND_WATCH = 4;
+  SIGNAL_NODE_KIND_ADD = 5;
+  SIGNAL_NODE_KIND_SUBTRACT = 6;
+  SIGNAL_NODE_KIND_MULTIPLY = 7;
+  // Zero where the right input is zero.
+  SIGNAL_NODE_KIND_DIVIDE = 8;
+}
+
+// One node of a signal graph. Which fields count depends on the kind.
+// Inputs name nodes by their position in the request, and only earlier
+// positions, which keeps a graph free of cycles.
+message SignalNode {
+  SignalNodeKind kind = 1;
+  // SIGNAL_NODE_KIND_GENERATOR.
+  Signal signal = 2;
+  // The channel, pin or watch channel a source reads.
+  uint32 source = 3;
+  // The two inputs of an operation.
+  uint32 left = 4;
+  uint32 right = 5;
+}
+
+// Which node drives which analog input.
+message SignalTarget {
+  uint32 channel = 1;
+  uint32 node = 2;
 }
 
 // Whether the firmware reads an analog channel or writes it.
@@ -199,6 +243,9 @@ message Channel {
   // publishing zero; the difference is usually a feature the firmware
   // has switched off, so it is reported rather than left to be guessed.
   bool has_value = 7;
+  // Whether the signal graph drives this input, so that its own signal
+  // does not apply.
+  bool driven_by_graph = 8;
 }
 
 // Where the running process put the image it was built as.
@@ -436,6 +483,9 @@ message Request {
   string label = 20;
   // COMMAND_WATCH_PROFILE_PATHS: whether to follow them.
   bool watching = 21;
+  // COMMAND_SET_SIGNAL_GRAPH: the nodes in order, and what they drive.
+  repeated SignalNode signal_nodes = 22;
+  repeated SignalTarget signal_targets = 23;
 }
 
 // The answer to exactly one request.

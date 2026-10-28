@@ -72,6 +72,7 @@ bool looper_encode_channel(
     looper_pb_write_varint(&writer, CHANNEL_FIELD_DIRECTION, (uint64_t)channel->direction);
     looper_pb_write_double(&writer, CHANNEL_FIELD_VALUE, channel->value);
     looper_pb_write_varint(&writer, CHANNEL_FIELD_HAS_VALUE, channel->has_value ? 1u : 0u);
+    looper_pb_write_varint(&writer, CHANNEL_FIELD_DRIVEN_BY_GRAPH, channel->driven_by_graph ? 1u : 0u);
     if (signal_length > 0u) {
         looper_pb_write_message(&writer, CHANNEL_FIELD_SIGNAL, signal, signal_length);
     }

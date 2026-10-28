@@ -17,6 +17,8 @@
 #include "looper_heap.h"
 #include "looper_profile.h"
 #include "looper_timing.h"
+#include "looper_analog.h"
+#include "looper_signal_graph.h"
 #include "looper_types.h"
 
 #ifdef __cplusplus
@@ -57,6 +59,12 @@ typedef struct {
     uint8_t payload_length;
     char label[LOOPER_LABEL_CAPACITY];
     bool watching;
+    looper_signal_node_t signal_nodes[LOOPER_SIGNAL_GRAPH_CAPACITY];
+    size_t signal_node_count;
+    looper_signal_target_t signal_targets[LOOPER_ANALOG_CAPACITY];
+    size_t signal_target_count;
+    /** More nodes or targets arrived than there is room for. */
+    bool signal_graph_overflow;
 } looper_request_t;
 
 /** @brief A response about to be encoded. */

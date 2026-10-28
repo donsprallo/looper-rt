@@ -35,6 +35,7 @@ allocating on a peer's word.
 | `COMMAND_CLEAR_JOURNAL` | | the journal |
 | `COMMAND_LIST_CHANNELS` | every registered analog channel | |
 | `COMMAND_SET_SIGNAL` | | the generator on one input channel |
+| `COMMAND_SET_SIGNAL_GRAPH` | | the signal graph and the inputs it drives |
 | `COMMAND_READ_TRACE` | recorded samples after a sequence | |
 | `COMMAND_CLEAR_TRACE` | | the trace |
 | `COMMAND_LIST_WATCHES` | every watched firmware variable | |
@@ -100,6 +101,28 @@ the simulation ends its loop: there is nobody left to answer.
 Opening the channel takes standard output away from the firmware. What it
 prints goes to the error stream instead, so a stray `printf` never lands in
 the middle of a frame.
+
+## The signal graph on the wire
+
+`COMMAND_SET_SIGNAL_GRAPH` (33) replaces the whole graph in one request. It
+carries two lists:
+
+| Message | Fields |
+| --- | --- |
+| `SignalNode` | `kind`, `signal` (what a generator produces), `source` (the channel, pin or watch a source reads), `left` and `right` (the inputs of an operation) |
+| `SignalTarget` | `channel` (the analog input), `node` (the node it reads) |
+
+Nodes go over the wire in an order where each node comes after the nodes it
+reads, and `left` and `right` name those by position. The runtime refuses an
+input that is not an earlier position. That alone keeps a graph free of
+cycles, and the runtime needs no search for them.
+
+A graph that is refused changes nothing: the inputs keep what drove them.
+`COMMAND_SET_SIGNAL` still works;
+setting a single signal on an input takes that input out of the graph.
+`Channel.driven_by_graph` (field 8) tells a client that the graph drives an
+input. `Waveform` has a sixth value, `WAVEFORM_NOISE` (5); see
+[The signal graph](runtime.md#the-signal-graph).
 
 ## Watching a firmware variable
 

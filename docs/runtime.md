@@ -89,6 +89,53 @@ already exist: `plib_gpio.h` contains
 Two macro resolutions turn `119` into `LED_STAT_B`, using the same libclang
 front end looper already carries.
 
+## Signals on analog inputs
+
+An analog input is driven by a client with a generator, not with samples.
+The runtime evaluates the generator at the moment the firmware reads the
+input, against the simulated clock. The waveforms are constant, sine,
+square, triangle, sawtooth and **noise**. Noise is spread evenly between
+`offset - amplitude` and `offset + amplitude`, with a new value on every
+read. It has an amplitude but no period. Its generator starts the same way
+in every run, so a run on the virtual clock repeats exactly.
+
+### The signal graph
+
+`looper_signal_graph.h` builds signals out of other signals: generators,
+what the firmware itself wrote to an output channel, a pin, a watched
+variable, combined by add, subtract, multiply and divide. Division by zero
+gives 0, so a firmware is never fed infinity.
+
+```c
+/* parameters abbreviated; see the header */
+bool looper_signal_graph_set(nodes, node_count, targets, target_count, &reason);
+void looper_signal_graph_clear(void);
+void looper_signal_graph_release(uint32_t channel);
+bool looper_signal_graph_value(uint32_t channel, uint64_t microseconds, double *value);
+```
+
+`looper_signal_graph_set` replaces the graph and the inputs it drives. When
+it refuses a graph, it says why in `reason` and changes nothing. Inputs the
+old graph drove and the new one does not go back to their own signal, as
+after `looper_signal_graph_clear`. `looper_signal_graph_release` takes one
+input out of the graph, which is what a client does when it sets a single
+signal on that input. `looper_signal_graph_value` is what the analog model
+asks when the firmware reads an input: it returns true and the value when
+the graph drives that input, and false when the input's own signal applies.
+
+A graph holds at most `LOOPER_SIGNAL_GRAPH_CAPACITY` nodes (64 by default),
+and an input has at most one target.
+
+A node names its inputs by position, and only earlier positions. That is the
+whole of the protection against cycles. A value the firmware wrote is read as
+it was left, so feeding an output back into an input is a source and not a
+loop.
+
+The graph is evaluated **per moment**. A node that two paths share, and a
+noise generator, give one value for that moment, however many paths ask. An
+`a - a` of a noisy node is therefore zero, as it should be. The wire form is
+described in [The signal graph on the wire](protocol.md#the-signal-graph-on-the-wire).
+
 ## The journal
 
 Hooks answer what an adapter does. The journal answers whether it was called.

@@ -65,7 +65,22 @@ bool looper_analog_register(
 bool looper_analog_set_signal(uint32_t channel, const looper_signal_t *signal);
 
 /**
+ * @brief Whether a channel is known and the firmware reads it.
+ * @param channel Channel to look at.
+ */
+bool looper_analog_is_input(uint32_t channel);
+
+/**
+ * @brief Say whether the signal graph drives a channel, for its listing.
+ * @param channel Channel the graph took or let go of.
+ * @param driven Whether the graph drives it now.
+ */
+void looper_analog_set_graph_driven(uint32_t channel, bool driven);
+
+/**
  * @brief Read a channel, evaluating its signal at the current simulated time.
+ *
+ * An input the signal graph drives takes its value from the graph instead.
  *
  * The returned value is recorded in the trace, so a client sees exactly what
  * the firmware saw, at the moment the firmware looked.
@@ -86,6 +101,9 @@ bool looper_analog_write(uint32_t channel, double value);
 
 /**
  * @brief Evaluate a signal definition at a point in time.
+ *
+ * Noise is the exception to "at a point in time": it draws a new value on
+ * every call, from a generator that starts the same way in every run.
  * @param signal Definition to evaluate.
  * @param microseconds Time to evaluate it at.
  * @return The value of the signal.

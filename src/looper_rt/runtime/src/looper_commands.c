@@ -14,6 +14,7 @@
 #include "looper_pin_trace.h"
 #include "looper_heap.h"
 #include "looper_profile.h"
+#include "looper_signal_graph.h"
 #include "looper_timing.h"
 #include "looper_trace.h"
 
@@ -70,10 +71,34 @@ static size_t collect_channels(void)
 static void serve_set_signal(const looper_request_t *request, looper_response_t *response)
 {
     if (looper_analog_set_signal(request->channel, &request->signal)) {
+        /* A client that drives an input alone takes it out of the graph. */
+        looper_signal_graph_release(request->channel);
         return;
     }
     response->status = LOOPER_STATUS_INVALID_ARGUMENT;
     response->message = "unknown channel, or the channel is an output";
+}
+
+static void serve_set_signal_graph(const looper_request_t *request, looper_response_t *response)
+{
+    const char *reason = NULL;
+
+    if (request->signal_graph_overflow) {
+        response->status = LOOPER_STATUS_INVALID_ARGUMENT;
+        response->message = "more nodes or targets than the simulation has room for";
+        return;
+    }
+    if (looper_signal_graph_set(
+            request->signal_nodes,
+            request->signal_node_count,
+            request->signal_targets,
+            request->signal_target_count,
+            &reason
+        )) {
+        return;
+    }
+    response->status = LOOPER_STATUS_INVALID_ARGUMENT;
+    response->message = reason;
 }
 
 static void serve_read_trace(const looper_request_t *request, looper_response_t *response)
@@ -154,6 +179,9 @@ void looper_commands_serve(
             break;
         case LOOPER_COMMAND_SET_SIGNAL:
             serve_set_signal(request, response);
+            break;
+        case LOOPER_COMMAND_SET_SIGNAL_GRAPH:
+            serve_set_signal_graph(request, response);
             break;
         case LOOPER_COMMAND_READ_PIN_TRACE:
             serve_read_pin_trace(request, response);

@@ -85,7 +85,8 @@ typedef enum {
     LOOPER_COMMAND_READ_PIN_TRACE = 29,
     LOOPER_COMMAND_CLEAR_PIN_TRACE = 30,
     LOOPER_COMMAND_READ_PROFILE_PATHS = 31,
-    LOOPER_COMMAND_WATCH_PROFILE_PATHS = 32
+    LOOPER_COMMAND_WATCH_PROFILE_PATHS = 32,
+    LOOPER_COMMAND_SET_SIGNAL_GRAPH = 33
 } looper_command_t;
 
 /** @brief What the bytes at a watched variable's address mean. */
@@ -124,7 +125,13 @@ typedef enum {
     LOOPER_WAVEFORM_SINE = 1,
     LOOPER_WAVEFORM_SQUARE = 2,
     LOOPER_WAVEFORM_TRIANGLE = 3,
-    LOOPER_WAVEFORM_SAWTOOTH = 4
+    LOOPER_WAVEFORM_SAWTOOTH = 4,
+    /**
+     * Uniformly distributed between offset - amplitude and offset +
+     * amplitude, a new value on every evaluation. Drawn from a generator
+     * with a fixed start, so a run on the virtual clock repeats exactly.
+     */
+    LOOPER_WAVEFORM_NOISE = 5
 } looper_waveform_t;
 
 /** @brief Whether the firmware reads an analog channel or writes it. */
@@ -166,7 +173,55 @@ typedef struct {
      * for a reader to guess at.
      */
     bool has_value;
+    /**
+     * @brief Whether the signal graph drives this channel rather than its
+     * own signal, which then means nothing.
+     */
+    bool driven_by_graph;
 } looper_channel_t;
+
+/** @brief What one node of a signal graph does. */
+typedef enum {
+    LOOPER_SIGNAL_NODE_UNSPECIFIED = 0,
+    /** Produces its signal from the simulated clock. */
+    LOOPER_SIGNAL_NODE_GENERATOR = 1,
+    /** The last value of an analog channel, as the firmware left it. */
+    LOOPER_SIGNAL_NODE_CHANNEL = 2,
+    /** A pin's level: one for high, zero for low. */
+    LOOPER_SIGNAL_NODE_PIN = 3,
+    /** The last value a watched variable was read with. */
+    LOOPER_SIGNAL_NODE_WATCH = 4,
+    /** Left plus right. */
+    LOOPER_SIGNAL_NODE_ADD = 5,
+    /** Left minus right. */
+    LOOPER_SIGNAL_NODE_SUBTRACT = 6,
+    /** Left times right. */
+    LOOPER_SIGNAL_NODE_MULTIPLY = 7,
+    /** Left divided by right, or zero where right is zero. */
+    LOOPER_SIGNAL_NODE_DIVIDE = 8
+} looper_signal_node_kind_t;
+
+/**
+ * @brief One node of a signal graph.
+ *
+ * Which fields count depends on the kind: a generator its signal, a source
+ * its channel, pin or watch number, an operation its two inputs. Inputs
+ * name nodes by their position in the graph, and only earlier positions,
+ * which is what keeps a graph free of cycles.
+ */
+typedef struct {
+    looper_signal_node_kind_t kind;
+    looper_signal_t signal;
+    uint32_t source;
+    uint32_t left;
+    uint32_t right;
+} looper_signal_node_t;
+
+/** @brief Which node drives which analog input. */
+typedef struct {
+    uint32_t channel;
+    uint32_t node;
+} looper_signal_target_t;
 
 /** @brief One recorded value of one channel. */
 typedef struct {

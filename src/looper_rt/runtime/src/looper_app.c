@@ -14,6 +14,7 @@
 #include "looper_gpio_model.h"
 #include "looper_heap.h"
 #include "looper_profile.h"
+#include "looper_signal_graph.h"
 #include "looper_timing.h"
 #include "looper_uart.h"
 #include "looper_journal.h"
@@ -101,6 +102,7 @@ static void prepare(const looper_application_t *application, looper_time_mode_t 
     looper_trace_clear();
     looper_watch_clear();
     looper_gpio_clear();
+    looper_signal_graph_clear();
     looper_analog_clear();
     looper_binding_clear();
     looper_bridge_clear();
