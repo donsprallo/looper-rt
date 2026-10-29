@@ -33,14 +33,15 @@ extern "C" {
 
 /** @brief Which input a read is asking about. */
 typedef enum {
-    LOOPER_AS8510_INPUT_CURRENT = 0,
-    LOOPER_AS8510_INPUT_VOLTAGE = 1
-} looper_as8510_input_t;
+    LOOPER_AS8510_CHANNEL_0 = 0,
+    LOOPER_AS8510_CHANNEL_1 = 1
+} looper_as8510_channel_t;
 
 /** @brief What one AS8510 needs to know about the board it is on. */
 typedef struct {
     /** @brief Reference voltage the converter measures against. */
     double reference_voltage_v;
+
     /**
      * @brief Conversion rate before the second decimation stage divides it.
      *
@@ -49,6 +50,7 @@ typedef struct {
      * rather than a property of the chip. Zero means the usual 8 kHz.
      */
     double conversion_base_rate_hz;
+
     /**
      * @brief Channel number the current input is published as.
      *
@@ -57,6 +59,23 @@ typedef struct {
      * rather than what the firmware makes of it.
      */
     uint32_t first_property_channel;
+
+    /**
+     * @brief Names and units for the two channels.
+     *
+     * The firmware is free to use whatever names it wants, but the
+     * simulation needs to know what they are so it can publish them.
+     */
+    const char *channel_names[2];
+
+    /**
+     * @brief Units for the two channels.
+     *
+     * The firmware is free to use whatever units it wants, but the
+     * simulation needs to know what they are so it can publish them.
+     */
+    const char *channel_units[2];
+
     /**
      * @brief Say that a conversion has finished.
      *
@@ -65,6 +84,7 @@ typedef struct {
      * project wired that line to.
      */
     void (*on_conversion_ready)(void *context);
+
     /** @brief Passed back to both callbacks. */
     void *context;
 } looper_as8510_config_t;
@@ -77,7 +97,7 @@ typedef struct {
 } looper_as8510_t;
 
 /** @brief The voltage at one input, in volts, as a client has set it. */
-double looper_as8510_input(const looper_as8510_t *self, looper_as8510_input_t input);
+double looper_as8510_input(const looper_as8510_t *self, looper_as8510_channel_t channel);
 
 /**
  * @brief Prepare one AS8510 in its power on state.

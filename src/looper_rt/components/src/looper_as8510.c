@@ -47,9 +47,9 @@ static bool bit_of(uint8_t value, uint8_t position)
     return ((value >> position) & 1u) != 0u;
 }
 
-double looper_as8510_input(const looper_as8510_t *self, looper_as8510_input_t input)
+double looper_as8510_input(const looper_as8510_t *self, looper_as8510_channel_t channel)
 {
-    const uint32_t offset = (input == LOOPER_AS8510_INPUT_VOLTAGE) ? 1u : 0u;
+    const uint32_t offset = (channel == LOOPER_AS8510_CHANNEL_1) ? 1u : 0u;
 
     return looper_analog_read(self->config.first_property_channel + offset);
 }
@@ -151,15 +151,14 @@ static const looper_spi_operations_t operations = {.transfer = transfer};
 static void publish_inputs(const looper_as8510_t *self, uint32_t bus, uint8_t chip_select)
 {
     const looper_bus_address_t address = {.value = chip_select, .extended = false};
-    static const char *const names[] = {"I_SENSE", "V_SENSE"};
 
     for (uint32_t index = 0u; index < 2u; index++) {
         (void)looper_component_publish(
             bus,
             address,
             self->config.first_property_channel + index,
-            names[index],
-            "V",
+            self->config.channel_names[index],
+            self->config.channel_units[index],
             LOOPER_CHANNEL_DIRECTION_INPUT
         );
     }
