@@ -99,6 +99,42 @@ static bool write_pin_changes(looper_pb_writer_t *writer, const looper_response_
     return true;
 }
 
+/* A status carries up to a model's whole state: more than other nested messages. */
+#define STATUS_CAPACITY (LOOPER_MODEL_STATES * sizeof(double) + NESTED_CAPACITY)
+
+static bool encode_status(
+    const looper_signal_node_status_t *status, uint8_t *buffer, size_t capacity, size_t *length
+)
+{
+    looper_pb_writer_t writer;
+
+    looper_pb_writer_init(&writer, buffer, capacity);
+    looper_pb_write_varint(&writer, SIGNAL_NODE_STATUS_FIELD_NODE, status->node);
+    looper_pb_write_string(&writer, SIGNAL_NODE_STATUS_FIELD_FAULT, status->fault);
+    looper_pb_write_packed_doubles(
+        &writer, SIGNAL_NODE_STATUS_FIELD_STATE, status->state, status->state_count
+    );
+    *length = writer.length;
+    return !writer.overflow;
+}
+
+static bool write_signal_nodes(looper_pb_writer_t *writer, const looper_response_t *response)
+{
+    uint8_t nested[STATUS_CAPACITY];
+
+    for (size_t index = 0u; index < response->signal_node_status_count; index++) {
+        size_t nested_length = 0u;
+
+        if (!encode_status(&response->signal_node_statuses[index], nested, sizeof(nested), &nested_length)) {
+            return false;
+        }
+        if (!looper_pb_write_message(writer, RESPONSE_FIELD_SIGNAL_NODES, nested, nested_length)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool write_watches(looper_pb_writer_t *writer, const looper_response_t *response)
 {
     uint8_t nested[NESTED_CAPACITY];
@@ -192,7 +228,8 @@ static bool write_repeated(looper_pb_writer_t *writer, const looper_response_t *
            && write_watches(writer, response) && write_buses(writer, response)
            && write_components(writer, response) && write_exchanges(writer, response)
            && looper_write_measurements(writer, response)
-           && write_pin_changes(writer, response) && write_image(writer, response);
+           && write_pin_changes(writer, response) && write_image(writer, response)
+           && write_signal_nodes(writer, response);
 }
 
 bool looper_protocol_encode_response(

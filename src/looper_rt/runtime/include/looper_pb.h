@@ -91,6 +91,19 @@ bool looper_pb_write_packed_wide(
     looper_pb_writer_t *writer, uint32_t field, const uintptr_t *values, size_t count
 );
 
+/**
+ * @brief The same, for doubles: a state, a list of measurements.
+ *
+ * @param writer Writer to append to.
+ * @param field Field number.
+ * @param values The values, in order.
+ * @param count How many there are. Nothing is written for none.
+ * @retval true Everything fitted.
+ */
+bool looper_pb_write_packed_doubles(
+    looper_pb_writer_t *writer, uint32_t field, const double *values, size_t count
+);
+
 bool looper_pb_write_string(looper_pb_writer_t *writer, uint32_t field, const char *value);
 
 /**

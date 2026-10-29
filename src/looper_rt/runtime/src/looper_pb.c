@@ -105,6 +105,27 @@ bool looper_pb_write_packed(
     return true;
 }
 
+bool looper_pb_write_packed_doubles(
+    looper_pb_writer_t *writer, uint32_t field, const double *values, size_t count
+)
+{
+    uint8_t encoded[sizeof(double)];
+
+    if (count == 0u) {
+        return !writer->overflow;
+    }
+    if (!begin_packed(writer, field, count * sizeof(double))) {
+        return false;
+    }
+    for (size_t index = 0u; index < count; index++) {
+        memcpy(encoded, &values[index], sizeof(encoded));
+        if (!write_raw(writer, encoded, sizeof(encoded))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool looper_pb_write_packed_wide(
     looper_pb_writer_t *writer, uint32_t field, const uintptr_t *values, size_t count
 )

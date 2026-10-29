@@ -28,6 +28,9 @@ bool looper_decode_signal_target(looper_pb_reader_t *reader, looper_request_t *r
 /** @brief Decode a linear system: its sizes, its step and its four matrices. */
 bool looper_decode_linear_system(looper_pb_reader_t *reader, looper_linear_system_t *system);
 
+/** @brief Decode a state model: its sizes, its clock, its lists and where its step is. */
+bool looper_decode_state_model(looper_pb_reader_t *reader, looper_state_model_t *model);
+
 /** @brief Decode a generated signal: waveform, amplitude, offset, frequency, phase. */
 bool looper_decode_signal(looper_pb_reader_t *reader, looper_signal_t *signal);
 

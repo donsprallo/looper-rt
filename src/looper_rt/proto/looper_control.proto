@@ -83,6 +83,11 @@ enum Command {
   // Replace the signal graph: signals built from generators, from what the
   // firmware drove, and from one another, driving analog inputs.
   COMMAND_SET_SIGNAL_GRAPH = 33;
+  // Read how each model node of the signal graph is doing: whether it has
+  // stopped, and its state.
+  COMMAND_READ_SIGNAL_GRAPH = 34;
+  // Put one model node back to the state it was installed with.
+  COMMAND_RESET_MODEL = 35;
   // Take the part of a peer on a bus the firmware does not master.
   COMMAND_ATTACH_COMPONENT = 21;
   // Stop taking it.
@@ -130,8 +135,11 @@ enum SignalNodeKind {
   // A discrete linear system stepped on the simulated clock; its value is
   // its first output.
   SIGNAL_NODE_KIND_LINEAR = 9;
-  // Output number `source` of the linear node at position `left`.
+  // Output number `source` of the linear or model node at position `left`.
   SIGNAL_NODE_KIND_PICK = 10;
+  // A state model stepped on the simulated clock, compiled or interpreted;
+  // its value is its first output.
+  SIGNAL_NODE_KIND_MODEL = 11;
 }
 
 // A discrete linear system in state space: x[k+1] = A x[k] + B u[k],
@@ -157,12 +165,69 @@ message SignalNode {
   Signal signal = 2;
   // The channel, pin or watch channel a source reads.
   uint32 source = 3;
-  // The two inputs of an operation; for a pick, `left` is the linear node.
+  // The two inputs of an operation; for a pick, `left` is the linear or
+  // model node.
   uint32 left = 4;
   uint32 right = 5;
   // SIGNAL_NODE_KIND_LINEAR: the system, and its inputs by position.
   LinearSystem linear = 6;
+  // The inputs of a linear or a model node, by position.
   repeated uint32 inputs = 7;
+  // SIGNAL_NODE_KIND_MODEL: the model.
+  StateModel model = 8;
+}
+
+// A library looper-core compiled from a model's step. The simulation and
+// looper-core always run on the same machine, so it is named by its path.
+message CompiledModel {
+  // Absolute path of the .dll, .so or .dylib.
+  string library = 1;
+  // The exported function returning the model's description.
+  string symbol = 2;
+  // The interface the library was generated for; the runtime refuses a
+  // library whose description says otherwise.
+  uint32 abi = 3;
+}
+
+// A model the model worker steps in Python.
+message InterpretedModel {
+  // Which of the worker's slots holds it.
+  uint32 slot = 1;
+}
+
+// A state model: x[k+1], y[k] = step(x[k], constants, u[k]), one step every
+// step_microseconds, inputs held in between. Exactly one of compiled and
+// interpreted is set; they are not a oneof only so that each stays a plain
+// field of this message.
+message StateModel {
+  uint32 states = 1;
+  uint32 inputs = 2;
+  uint32 outputs = 3;
+  uint64 step_microseconds = 4;
+  // What __init__ left in the attributes outside the state, tables flattened.
+  repeated double constants = 5;
+  // Where the state starts: from __init__, or carried over from the node
+  // this one replaces.
+  repeated double state = 6;
+  CompiledModel compiled = 7;
+  InterpretedModel interpreted = 8;
+  // What COMMAND_RESET_MODEL returns to: the state __init__ gives with the
+  // parameters the model has now. Empty means the same as `state`.
+  repeated double initial_state = 9;
+  // The step as the model states it, passed to the step as dt; the
+  // microseconds are only the clock, and a step of a third of a millisecond
+  // is not a whole number of them.
+  double step_seconds = 10;
+}
+
+// One model node of the running graph.
+message SignalNodeStatus {
+  // Its position in the graph.
+  uint32 node = 1;
+  // Why it stopped; empty while it runs. A stopped node holds its last
+  // finite outputs.
+  string fault = 2;
+  repeated double state = 3;
 }
 
 // Which node drives which analog input.
@@ -508,6 +573,11 @@ message Request {
   // COMMAND_SET_SIGNAL_GRAPH: the nodes in order, and what they drive.
   repeated SignalNode signal_nodes = 22;
   repeated SignalTarget signal_targets = 23;
+  // COMMAND_RESET_MODEL: the node, by its position in the graph.
+  uint32 signal_node = 24;
+  // COMMAND_SET_SIGNAL_GRAPH: the name of the model worker's shared memory;
+  // empty when the graph has no interpreted model.
+  string model_worker = 25;
 }
 
 // The answer to exactly one request.
@@ -583,4 +653,6 @@ message Response {
   // Whether the paths are being followed at all, so that an empty
   // tree is told from one nobody asked for.
   bool watching_profile_paths = 30;
+  // COMMAND_READ_SIGNAL_GRAPH: every model node of the graph, in order.
+  repeated SignalNodeStatus signal_nodes = 32;
 }

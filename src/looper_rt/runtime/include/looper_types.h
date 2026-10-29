@@ -86,7 +86,9 @@ typedef enum {
     LOOPER_COMMAND_CLEAR_PIN_TRACE = 30,
     LOOPER_COMMAND_READ_PROFILE_PATHS = 31,
     LOOPER_COMMAND_WATCH_PROFILE_PATHS = 32,
-    LOOPER_COMMAND_SET_SIGNAL_GRAPH = 33
+    LOOPER_COMMAND_SET_SIGNAL_GRAPH = 33,
+    LOOPER_COMMAND_READ_SIGNAL_GRAPH = 34,
+    LOOPER_COMMAND_RESET_MODEL = 35
 } looper_command_t;
 
 /** @brief What the bytes at a watched variable's address mean. */
@@ -205,8 +207,15 @@ typedef enum {
      * output; @ref LOOPER_SIGNAL_NODE_PICK reads the others.
      */
     LOOPER_SIGNAL_NODE_LINEAR = 9,
-    /** One output of the linear system at position left, numbered by source. */
-    LOOPER_SIGNAL_NODE_PICK = 10
+    /** One output of the linear or model node at position left, numbered by source. */
+    LOOPER_SIGNAL_NODE_PICK = 10,
+    /**
+     * A state model, stepped on the simulated clock: friction, saturation,
+     * anything a project wrote as a StateModel class. Its step is a
+     * library looper-core compiled from Python. Its value is its first
+     * output; @ref LOOPER_SIGNAL_NODE_PICK reads the others.
+     */
+    LOOPER_SIGNAL_NODE_MODEL = 11
 } looper_signal_node_kind_t;
 
 /** @brief Most states one linear system has. */
@@ -214,6 +223,61 @@ typedef enum {
 
 /** @brief Most inputs, and most outputs, one linear system has. */
 #define LOOPER_LINEAR_PORTS 4u
+
+/** @brief Most states one state model has. */
+#define LOOPER_MODEL_STATES 64u
+
+/** @brief Most inputs, and most outputs, one state model has. */
+#define LOOPER_MODEL_PORTS 8u
+
+/** @brief Most constants one state model reads, its tables included. */
+#define LOOPER_MODEL_CONSTANTS 256u
+
+/** @brief Room for the name of the function a model library exports. */
+#define LOOPER_MODEL_SYMBOL_CAPACITY 64u
+
+/** @brief Most inputs one node reads: as many as the widest kind takes. */
+#define LOOPER_SIGNAL_NODE_INPUTS LOOPER_MODEL_PORTS
+
+/** @brief What steps a state model. */
+typedef enum {
+    /** Neither: a model that arrived without saying, which is refused. */
+    LOOPER_MODEL_PROVIDER_NONE = 0,
+    /** A library compiled from the model's step, loaded into this process. */
+    LOOPER_MODEL_PROVIDER_COMPILED = 1,
+    /** The model worker, which steps it in Python. */
+    LOOPER_MODEL_PROVIDER_INTERPRETED = 2
+} looper_model_provider_t;
+
+/**
+ * @brief A state model as a request installs it.
+ *
+ * Everything a model is made of that is not code: its size, its clock, the
+ * constants its step reads and where its state starts. The code is the
+ * library, named by path. Each list carries how many values arrived, so
+ * that one longer than there is room for is refused rather than cut short.
+ */
+typedef struct {
+    uint32_t states;
+    uint32_t inputs;
+    uint32_t outputs;
+    uint64_t step_microseconds;
+    /** The dt the step is given; zero means step_microseconds as seconds. */
+    double step_seconds;
+    double constants[LOOPER_MODEL_CONSTANTS];
+    uint32_t constant_count;
+    double state[LOOPER_MODEL_STATES];
+    uint32_t state_count;
+    /** What a reset returns to; none means the same as state. */
+    double initial_state[LOOPER_MODEL_STATES];
+    uint32_t initial_state_count;
+    looper_model_provider_t provider;
+    char library[LOOPER_FILE_PATH_CAPACITY];
+    char symbol[LOOPER_MODEL_SYMBOL_CAPACITY];
+    uint32_t abi;
+    /** The model worker's slot, for an interpreted model. */
+    uint32_t slot;
+} looper_state_model_t;
 
 /**
  * @brief A discrete linear system in state space.
@@ -250,12 +314,12 @@ typedef struct {
 typedef struct {
     looper_signal_node_kind_t kind;
     looper_signal_t signal;
-    /** A source's number; a linear system's place among the systems; a pick's output. */
+    /** A source's number; a system's or a model's place among them; a pick's output. */
     uint32_t source;
     uint32_t left;
     uint32_t right;
-    /** The inputs of a linear system, by position, as many as it takes. */
-    uint32_t inputs[LOOPER_LINEAR_PORTS];
+    /** The inputs of a linear system or a model, by position, as many as it takes. */
+    uint32_t inputs[LOOPER_SIGNAL_NODE_INPUTS];
     uint32_t input_count;
 } looper_signal_node_t;
 

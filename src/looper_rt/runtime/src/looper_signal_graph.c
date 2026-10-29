@@ -4,8 +4,9 @@
  * Each node keeps the value it last gave and the moment it gave it. Two
  * inputs read at the same moment through one node see one value -- which
  * matters for noise, where evaluating twice would give two -- and a node
- * shared by several paths is evaluated once per moment. A linear system is
- * stepped once per moment for the same reason, however many picks read it.
+ * shared by several paths is evaluated once per moment. A linear system or
+ * a state model is stepped once per moment for the same reason, however
+ * many picks read it.
  */
 #include "looper_signal_graph.h"
 
@@ -15,6 +16,7 @@
 #include "looper_gpio_model.h"
 #include "looper_linear_system.h"
 #include "looper_signal_graph_check.h"
+#include "looper_state_model.h"
 #include "looper_watch.h"
 
 /* One past any moment, so that a fresh node never looks evaluated. */
@@ -27,6 +29,9 @@ static size_t target_count;
 static looper_linear_system_t systems[LOOPER_SIGNAL_GRAPH_SYSTEMS];
 static looper_linear_state_t system_states[LOOPER_SIGNAL_GRAPH_SYSTEMS];
 static size_t system_count;
+static looper_state_model_t models[LOOPER_SIGNAL_GRAPH_MODELS];
+static looper_model_run_t model_runs[LOOPER_SIGNAL_GRAPH_MODELS];
+static size_t model_count;
 static double values[LOOPER_SIGNAL_GRAPH_CAPACITY];
 static uint64_t evaluated_at[LOOPER_SIGNAL_GRAPH_CAPACITY];
 
@@ -63,16 +68,51 @@ static void carry_states(const looper_signal_graph_t *graph, looper_linear_state
     }
 }
 
+/* Let go of every library in a list of runs. */
+static void close_runs(looper_model_run_t *runs, size_t count)
+{
+    for (size_t index = 0u; index < count; index++) {
+        looper_model_library_close(&runs[index].library);
+    }
+}
+
+/*
+ * Load every model library of a new graph into runs of its own. All or
+ * nothing: one that cannot be loaded lets go of those loaded before it,
+ * and the old graph keeps running.
+ */
+static const char *open_models(const looper_signal_graph_t *graph, looper_model_run_t *opened)
+{
+    for (size_t index = 0u; index < graph->model_count; index++) {
+        looper_state_model_start(&graph->models[index], &opened[index]);
+        const char *fault = looper_model_library_open(&graph->models[index], &opened[index].library);
+        if (fault != NULL) {
+            close_runs(opened, index);
+            return fault;
+        }
+    }
+    return NULL;
+}
+
+static bool refuse(const char *fault, const char **reason)
+{
+    if (reason != NULL) {
+        *reason = fault;
+    }
+    return false;
+}
+
 bool looper_signal_graph_set(const looper_signal_graph_t *graph, const char **reason)
 {
     static looper_linear_state_t carried[LOOPER_SIGNAL_GRAPH_SYSTEMS];
+    static looper_model_run_t opened[LOOPER_SIGNAL_GRAPH_MODELS];
     const char *fault = looper_signal_graph_fault(graph);
 
+    if (fault == NULL) {
+        fault = open_models(graph, opened);
+    }
     if (fault != NULL) {
-        if (reason != NULL) {
-            *reason = fault;
-        }
-        return false;
+        return refuse(fault, reason);
     }
     carry_states(graph, carried);
     looper_signal_graph_clear();
@@ -80,9 +120,12 @@ bool looper_signal_graph_set(const looper_signal_graph_t *graph, const char **re
     memcpy(targets, graph->targets, graph->target_count * sizeof(*graph->targets));
     memcpy(systems, graph->systems, graph->system_count * sizeof(*graph->systems));
     memcpy(system_states, carried, graph->system_count * sizeof(*carried));
+    memcpy(models, graph->models, graph->model_count * sizeof(*graph->models));
+    memcpy(model_runs, opened, graph->model_count * sizeof(*opened));
     node_count = graph->node_count;
     target_count = graph->target_count;
     system_count = graph->system_count;
+    model_count = graph->model_count;
     mark_targets(true);
     return true;
 }
@@ -90,9 +133,11 @@ bool looper_signal_graph_set(const looper_signal_graph_t *graph, const char **re
 void looper_signal_graph_clear(void)
 {
     mark_targets(false);
+    close_runs(model_runs, model_count);
     node_count = 0u;
     target_count = 0u;
     system_count = 0u;
+    model_count = 0u;
     for (size_t index = 0u; index < LOOPER_SIGNAL_GRAPH_CAPACITY; index++) {
         evaluated_at[index] = NEVER;
     }
@@ -169,11 +214,31 @@ static double run_linear(const looper_signal_node_t *node, uint64_t microseconds
     return system_states[node->source].output[0];
 }
 
-/* One output of a linear system, once it has been stepped to the moment. */
+/* Step a state model to the moment and give its first output. */
+static double run_model(const looper_signal_node_t *node, uint64_t microseconds)
+{
+    double input[LOOPER_MODEL_PORTS] = {0.0};
+
+    if (node->source >= model_count) {
+        return 0.0;
+    }
+    for (uint32_t index = 0u; index < node->input_count; index++) {
+        input[index] = evaluate(node->inputs[index], microseconds);
+    }
+    looper_state_model_advance(&models[node->source], &model_runs[node->source], input, microseconds);
+    return model_runs[node->source].output[0];
+}
+
+/* One output of a linear system or a model, once it has been stepped to the moment. */
 static double pick(const looper_signal_node_t *node, uint64_t microseconds)
 {
+    const looper_signal_node_t *picked = &nodes[node->left];
+
     (void)evaluate(node->left, microseconds);
-    return system_states[nodes[node->left].source].output[node->source];
+    if (picked->kind == LOOPER_SIGNAL_NODE_MODEL) {
+        return model_runs[picked->source].output[node->source];
+    }
+    return system_states[picked->source].output[node->source];
 }
 
 static double produce(const looper_signal_node_t *node, uint64_t microseconds)
@@ -191,6 +256,8 @@ static double produce(const looper_signal_node_t *node, uint64_t microseconds)
             return run_linear(node, microseconds);
         case LOOPER_SIGNAL_NODE_PICK:
             return pick(node, microseconds);
+        case LOOPER_SIGNAL_NODE_MODEL:
+            return run_model(node, microseconds);
         default:
             return operate(
                 node->kind, evaluate(node->left, microseconds), evaluate(node->right, microseconds)
@@ -219,4 +286,33 @@ bool looper_signal_graph_value(uint32_t channel, uint64_t microseconds, double *
         }
     }
     return false;
+}
+
+size_t looper_signal_graph_statuses(looper_signal_node_status_t *statuses, size_t capacity)
+{
+    size_t written = 0u;
+
+    for (size_t position = 0u; position < node_count && written < capacity; position++) {
+        const looper_signal_node_t *node = &nodes[position];
+        if (node->kind != LOOPER_SIGNAL_NODE_MODEL || node->source >= model_count) {
+            continue;
+        }
+        statuses[written].node = (uint32_t)position;
+        statuses[written].fault = model_runs[node->source].fault;
+        statuses[written].state = model_runs[node->source].state;
+        statuses[written].state_count = models[node->source].states;
+        written++;
+    }
+    return written;
+}
+
+bool looper_signal_graph_reset_model(uint32_t position, const char **reason)
+{
+    if (position >= node_count || nodes[position].kind != LOOPER_SIGNAL_NODE_MODEL) {
+        return refuse("there is no model node at that position", reason);
+    }
+    uint32_t index = nodes[position].source;
+    looper_state_model_reset(&models[index], &model_runs[index]);
+    evaluated_at[position] = NEVER;
+    return true;
 }

@@ -5,6 +5,7 @@
 
 #include "looper_analog.h"
 #include "looper_linear_system.h"
+#include "looper_state_model.h"
 
 static bool is_operation(looper_signal_node_kind_t kind)
 {
@@ -30,17 +31,50 @@ static const char *linear_fault(
     return looper_linear_fault(system);
 }
 
+static const char *model_fault(
+    const looper_signal_graph_t *graph, const looper_signal_node_t *node, size_t position
+)
+{
+    if (node->source >= graph->model_count) {
+        return "a model node without a model";
+    }
+    const looper_state_model_t *model = &graph->models[node->source];
+    if (node->input_count != model->inputs || node->input_count > LOOPER_MODEL_PORTS) {
+        return "a model node fed by a different number of inputs than its model takes";
+    }
+    for (uint32_t index = 0u; index < node->input_count; index++) {
+        if (node->inputs[index] >= position) {
+            return "a model node whose input is not an earlier node";
+        }
+    }
+    return looper_state_model_fault(model);
+}
+
+/* How many outputs the node a pick reads has; zero for one it cannot read. */
+static uint32_t pickable_outputs(const looper_signal_graph_t *graph, const looper_signal_node_t *picked)
+{
+    if (picked->kind == LOOPER_SIGNAL_NODE_LINEAR && picked->source < graph->system_count) {
+        return graph->systems[picked->source].outputs;
+    }
+    if (picked->kind == LOOPER_SIGNAL_NODE_MODEL && picked->source < graph->model_count) {
+        return graph->models[picked->source].outputs;
+    }
+    return 0u;
+}
+
 static const char *pick_fault(
     const looper_signal_graph_t *graph, const looper_signal_node_t *node, size_t position
 )
 {
-    if (node->left >= position || graph->nodes[node->left].kind != LOOPER_SIGNAL_NODE_LINEAR) {
-        return "a pick from something that is not an earlier linear node";
+    if (node->left >= position) {
+        return "a pick from something that is not an earlier linear or model node";
     }
-    const looper_signal_node_t *linear = &graph->nodes[node->left];
-    if (linear->source >= graph->system_count
-        || node->source >= graph->systems[linear->source].outputs) {
-        return "a pick of an output its linear system does not have";
+    uint32_t outputs = pickable_outputs(graph, &graph->nodes[node->left]);
+    if (outputs == 0u) {
+        return "a pick from something that is not an earlier linear or model node";
+    }
+    if (node->source >= outputs) {
+        return "a pick of an output its linear system or model does not have";
     }
     return NULL;
 }
@@ -49,7 +83,7 @@ static const char *node_fault(const looper_signal_graph_t *graph, size_t positio
 {
     const looper_signal_node_t *node = &graph->nodes[position];
 
-    if (node->kind <= LOOPER_SIGNAL_NODE_UNSPECIFIED || node->kind > LOOPER_SIGNAL_NODE_PICK) {
+    if (node->kind <= LOOPER_SIGNAL_NODE_UNSPECIFIED || node->kind > LOOPER_SIGNAL_NODE_MODEL) {
         return "a node of a kind this simulation does not know";
     }
     if (is_operation(node->kind) && (node->left >= position || node->right >= position)) {
@@ -64,6 +98,9 @@ static const char *node_fault(const looper_signal_graph_t *graph, size_t positio
     if (node->kind == LOOPER_SIGNAL_NODE_PICK) {
         return pick_fault(graph, node, position);
     }
+    if (node->kind == LOOPER_SIGNAL_NODE_MODEL) {
+        return model_fault(graph, node, position);
+    }
     return NULL;
 }
 
@@ -74,6 +111,9 @@ static const char *size_fault(const looper_signal_graph_t *graph)
     }
     if (graph->system_count > LOOPER_SIGNAL_GRAPH_SYSTEMS) {
         return "more linear systems than the simulation has room for";
+    }
+    if (graph->model_count > LOOPER_SIGNAL_GRAPH_MODELS) {
+        return "more state models than the simulation has room for";
     }
     if (graph->target_count > LOOPER_ANALOG_CAPACITY) {
         return "more targets than the simulation has inputs";

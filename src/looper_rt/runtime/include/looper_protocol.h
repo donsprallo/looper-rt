@@ -32,8 +32,12 @@ extern "C" {
  * cannot read rather than misread it. Raise it whenever a field changes
  * meaning or a number moves; adding a field at a fresh number does not
  * need it, because an older client ignores what it does not know.
+ *
+ * 2: state models. Only fields were added, but an older runtime would
+ * refuse a model node as a kind it does not know, with a reason nobody
+ * could act on. The version lets looper-core say "rebuild" instead.
  */
-#define LOOPER_PROTOCOL_VERSION 1u
+#define LOOPER_PROTOCOL_VERSION 2u
 
 /** @brief A decoded client request. */
 typedef struct {
@@ -65,6 +69,10 @@ typedef struct {
     size_t signal_target_count;
     looper_linear_system_t signal_systems[LOOPER_SIGNAL_GRAPH_SYSTEMS];
     size_t signal_system_count;
+    looper_state_model_t signal_models[LOOPER_SIGNAL_GRAPH_MODELS];
+    size_t signal_model_count;
+    /** COMMAND_RESET_MODEL: the node, by its position in the graph. */
+    uint32_t signal_node;
     /** More nodes or targets arrived than there is room for. */
     bool signal_graph_overflow;
 } looper_request_t;
@@ -119,6 +127,9 @@ typedef struct {
     bool watching_profile_paths;
     const looper_heap_site_t *heap_sites;
     size_t heap_site_count;
+    /** COMMAND_READ_SIGNAL_GRAPH: every model node of the graph. */
+    const looper_signal_node_status_t *signal_node_statuses;
+    size_t signal_node_status_count;
 } looper_response_t;
 
 /**

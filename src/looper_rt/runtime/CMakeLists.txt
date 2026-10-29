@@ -20,6 +20,7 @@ add_library(looperRuntime STATIC
     src/looper_clock.c
     src/looper_commands.c
     src/looper_commands_bus.c
+    src/looper_commands_graph.c
     src/looper_commands_profile.c
     src/looper_commands_watch.c
     src/looper_component_property.c
@@ -30,6 +31,7 @@ add_library(looperRuntime STATIC
     src/looper_image.c
     src/looper_journal.c
     src/looper_pace.c
+    src/looper_model_library.c
     src/looper_pb.c
     src/looper_pin_trace.c
     src/looper_profile.c
@@ -41,6 +43,7 @@ add_library(looperRuntime STATIC
     src/looper_protocol_decode.c
     src/looper_protocol_decode_graph.c
     src/looper_protocol_decode_linear.c
+    src/looper_protocol_decode_model.c
     src/looper_protocol_elements.c
     src/looper_protocol_memory.c
     src/looper_protocol_encode.c
@@ -48,6 +51,7 @@ add_library(looperRuntime STATIC
     src/looper_signal_graph.c
     src/looper_signal_graph_check.c
     src/looper_linear_system.c
+    src/looper_state_model.c
     src/looper_socket.c
     src/looper_socket_datagram.c
     src/looper_spi.c
@@ -67,6 +71,9 @@ if (WIN32)
 else ()
     target_link_libraries(looperRuntime PUBLIC m)
 endif ()
+# dlopen, for compiled state models: libdl before glibc 2.34, nothing after,
+# and nothing on Windows or macOS, which is what CMAKE_DL_LIBS says.
+target_link_libraries(looperRuntime PUBLIC ${CMAKE_DL_LIBS})
 
 # The entry point every simulation shares. Kept apart because it prints, and
 # a project that wants the loop for itself simply does not link it.

@@ -79,10 +79,10 @@ static void apply_node_varint(looper_signal_node_t *node, uint32_t field, uint64
     }
 }
 
-/* One more input of a linear node; past the room there is, only counted. */
+/* One more input of a linear or model node; past the room there is, only counted. */
 static void append_input(looper_signal_node_t *node, uint64_t position)
 {
-    if (node->input_count < LOOPER_LINEAR_PORTS) {
+    if (node->input_count < LOOPER_SIGNAL_NODE_INPUTS) {
         node->inputs[node->input_count] = (uint32_t)position;
     }
     node->input_count++;
@@ -134,6 +134,24 @@ static bool decode_system(looper_pb_reader_t *reader, looper_request_t *request,
     return looper_pb_read_message(reader, &nested) && looper_decode_linear_system(&nested, system);
 }
 
+/* A node's model goes into the request's table of models, as a system does. */
+static bool decode_model(looper_pb_reader_t *reader, looper_request_t *request, looper_signal_node_t *node)
+{
+    static looper_state_model_t scratch;
+    looper_pb_reader_t nested;
+    looper_state_model_t *model = &scratch;
+
+    if (request->signal_model_count < LOOPER_SIGNAL_GRAPH_MODELS) {
+        model = &request->signal_models[request->signal_model_count];
+        node->source = (uint32_t)request->signal_model_count;
+        request->signal_model_count++;
+    } else {
+        request->signal_graph_overflow = true;
+    }
+    memset(model, 0, sizeof(*model));
+    return looper_pb_read_message(reader, &nested) && looper_decode_state_model(&nested, model);
+}
+
 static bool decode_node_field(
     looper_pb_reader_t *reader,
     looper_request_t *request,
@@ -150,6 +168,9 @@ static bool decode_node_field(
     }
     if (field == SIGNAL_NODE_FIELD_LINEAR && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
         return decode_system(reader, request, node);
+    }
+    if (field == SIGNAL_NODE_FIELD_MODEL && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
+        return decode_model(reader, request, node);
     }
     if (field == SIGNAL_NODE_FIELD_INPUTS) {
         return decode_inputs(reader, node, wire_type);

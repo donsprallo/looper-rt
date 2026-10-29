@@ -47,6 +47,9 @@ static void apply_request_watch_varint(looper_request_t *request, uint32_t field
         case REQUEST_FIELD_BUS:
             request->bus = (uint32_t)value;
             break;
+        case REQUEST_FIELD_SIGNAL_NODE:
+            request->signal_node = (uint32_t)value;
+            break;
         default:
             break;
     }
