@@ -117,6 +117,41 @@ reads, and `left` and `right` name those by position. The runtime refuses an
 input that is not an earlier position. That alone keeps a graph free of
 cycles, and the runtime needs no search for them.
 
+### Linear systems on the wire
+
+Two node kinds carry a linear system, and two fields of `SignalNode` go with
+them:
+
+| Name | Meaning |
+| --- | --- |
+| `SIGNAL_NODE_KIND_LINEAR` (9) | a linear system, described by `SignalNode.linear` |
+| `SIGNAL_NODE_KIND_PICK` (10) | one output of a linear node: output number `source` of the linear node at position `left` |
+| `SignalNode.linear` (6) | a `LinearSystem` |
+| `SignalNode.inputs` (7) | the positions of a linear node's inputs, in the order of its ports |
+
+A `LinearSystem` is the discrete state space, ready to step:
+
+| Field | Meaning |
+| --- | --- |
+| `states`, `inputs`, `outputs` | the size of the system |
+| `step_microseconds` | simulated time between two steps |
+| `a`, `b`, `c`, `d` | the matrices, as flat lists of doubles, row by row |
+
+`a` is `states` by `states`, `b` is `states` by `inputs`, `c` is `outputs` by
+`states` and `d` is `outputs` by `inputs`. A pick node reads one output of a linear node.
+A client does not have to write them; `looper-core` inserts the picks itself
+when a second output is read.
+
+The runtime refuses, and says why in `reason`:
+
+- a system larger than there is room for (see
+  [Capacities](runtime.md#capacities));
+- a step of zero;
+- matrices whose counts do not match the size;
+- a linear node that is fed a different number of inputs than its system
+  takes;
+- a pick from something that is not an earlier linear node.
+
 A graph that is refused changes nothing: the inputs keep what drove them.
 `COMMAND_SET_SIGNAL` still works;
 setting a single signal on an input takes that input out of the graph.

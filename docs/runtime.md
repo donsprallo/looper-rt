@@ -136,6 +136,40 @@ noise generator, give one value for that moment, however many paths ask. An
 `a - a` of a noisy node is therefore zero, as it should be. The wire form is
 described in [The signal graph on the wire](protocol.md#the-signal-graph-on-the-wire).
 
+### Linear systems
+
+A node of kind `LINEAR` holds a discrete state space, `x[k+1] = A x[k] + B u[k]`
+and `y = C x + D u`, and gives the output the firmware reads. A model is
+turned into one by `looper-core` before it is sent; the runtime knows only
+the matrices. The wire form is described in
+[Linear systems on the wire](protocol.md#linear-systems-on-the-wire).
+
+The system steps at its **own fixed step**, on the simulated clock, and not at
+every firmware read. When the firmware reads, the system **catches up** to that moment, holding its
+inputs at their current values, and answers with its latest outputs. A system
+that several paths share steps once per moment, like any other node. On a
+virtual clock the result is exact and repeatable.
+
+A second output is read through a node of kind `PICK`. It takes output number
+`source` of the linear node at position `left`.
+
+`looper_signal_graph_set` replaces the graph, but a linear system keeps its
+**state** when its size stays the same. Changing a parameter therefore does
+not make a filter jump.
+
+A system that is left unread for a very long time does not work off the
+backlog. When more than 100 000 steps are due, it jumps to the present
+instead.
+
+### Capacities
+
+| Constant | Default | Limits |
+| --- | --- | --- |
+| `LOOPER_SIGNAL_GRAPH_CAPACITY` | 64 | nodes in a graph |
+| `LOOPER_SIGNAL_GRAPH_SYSTEMS` | 8 | linear systems in a graph |
+| `LOOPER_LINEAR_STATES` | 8 | states of one system |
+| `LOOPER_LINEAR_PORTS` | 4 | inputs, and outputs, of one system |
+
 ## The journal
 
 Hooks answer what an adapter does. The journal answers whether it was called.
