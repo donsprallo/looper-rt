@@ -73,6 +73,8 @@ typedef struct {
     size_t signal_model_count;
     /** COMMAND_RESET_MODEL: the node, by its position in the graph. */
     uint32_t signal_node;
+    /** COMMAND_SET_SIGNAL_GRAPH: the model worker, for a graph with interpreted models. */
+    char model_worker[LOOPER_MODEL_WORKER_NAME_CAPACITY];
     /** More nodes or targets arrived than there is room for. */
     bool signal_graph_overflow;
 } looper_request_t;

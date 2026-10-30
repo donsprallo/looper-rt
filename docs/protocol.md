@@ -36,6 +36,8 @@ allocating on a peer's word.
 | `COMMAND_LIST_CHANNELS` | every registered analog channel | |
 | `COMMAND_SET_SIGNAL` | | the generator on one input channel |
 | `COMMAND_SET_SIGNAL_GRAPH` | | the signal graph and the inputs it drives |
+| `COMMAND_READ_SIGNAL_GRAPH` | how each model node of the graph is doing: whether it stopped, and its state | |
+| `COMMAND_RESET_MODEL` | | one model node, back to the state it was installed with |
 | `COMMAND_READ_TRACE` | recorded samples after a sequence | |
 | `COMMAND_CLEAR_TRACE` | | the trace |
 | `COMMAND_LIST_WATCHES` | every watched firmware variable | |
@@ -159,6 +161,65 @@ setting a single signal on an input takes that input out of the graph.
 input. `Waveform` has a sixth value, `WAVEFORM_NOISE` (5); see
 [The signal graph](runtime.md#the-signal-graph).
 
+### State models on the wire
+
+A model that is not linear is a node of kind `SIGNAL_NODE_KIND_MODEL` (11).
+Its value is its first output, and a further output is read through a pick
+node, as for a linear system.
+
+| Name | Meaning |
+| --- | --- |
+| `SignalNode.model` (8) | a `StateModel` |
+| `SignalNode.inputs` (7) | the positions of the model's inputs, in the order of its ports, as for a linear node |
+| `Request.model_worker` (25) | with `COMMAND_SET_SIGNAL_GRAPH`: the name of the model worker's shared memory; empty when the graph has no interpreted model |
+
+A `StateModel` describes a model that steps once every `step_microseconds`
+with its inputs held in between:
+
+| Field | Meaning |
+| --- | --- |
+| `states`, `inputs`, `outputs` | the size of the model |
+| `step_microseconds` | simulated time between two steps. It is only the clock |
+| `step_seconds` | the step as the model states it, passed to `step` as `dt`. A step of a third of a millisecond is not a whole number of microseconds |
+| `constants` | what `__init__` left in the attributes outside the state, with tables flattened |
+| `state` | where the state starts: from `__init__`, or carried over from the node this one replaces |
+| `initial_state` | what `COMMAND_RESET_MODEL` returns to: the state `__init__` gives with the parameters the model has now. Empty means the same as `state` |
+| `compiled` (7) | a `CompiledModel`, for a model that runs in C |
+| `interpreted` (8) | an `InterpretedModel`, for a model that runs in Python |
+
+Exactly one of `compiled` and `interpreted` is set. They are not a `oneof`
+only so that each stays a plain field of the message.
+
+A `CompiledModel` names the library by its absolute path, not by its bytes,
+because the simulation and `looper-core` always run on the same machine. It
+carries `library` (the `.dll`, `.so` or `.dylib`), `symbol` (the exported
+function that returns the model's description) and `abi` (the interface the
+library was generated for). An `InterpretedModel` carries only a `slot`: which
+place in the model worker holds the model.
+
+The runtime refuses a model, and says why in `reason`, when
+
+- it is larger than there is room for (see
+  [Capacities](runtime.md#capacities));
+- it has no step or no output;
+- its state does not match its size;
+- it is interpreted and its slot is one the worker does not have;
+- it is compiled and the library cannot be loaded, or does not fit the
+  request; see [Model nodes](runtime.md#model-nodes).
+
+`COMMAND_READ_SIGNAL_GRAPH` (34) answers with `signal_nodes` (32 of the
+response): one `SignalNodeStatus` for every model node of the graph, in order.
+
+| Field | Meaning |
+| --- | --- |
+| `node` | its position in the graph |
+| `fault` | why it stopped; empty while it runs |
+| `state` | the values of its state |
+
+`COMMAND_RESET_MODEL` (35) takes the position of a node in `signal_node` (24
+of the request) and puts that node back to its initial state. A node that
+stopped runs again.
+
 ## Watching a firmware variable
 
 A watch is an address the simulation reads once per firmware loop iteration,
@@ -253,7 +314,11 @@ both installed: `tests/infrastructure/ipc/test_protocol_version.py` in
 `looper-core` reads this header out of the installed runtime and fails if
 the two numbers differ.
 
-Raise it when a field changes meaning or a number moves. Adding a field at a
+Raise it when a field changes meaning or a number moves, or when an older
+runtime would refuse what a client now sends in a way nobody could act on.
+Version 2 is that case: a runtime built before state models refuses a model
+node as a kind it does not know, and the version lets the client say
+"rebuild" instead. Adding a field at a
 fresh number does not need it: an older client ignores what it does not know,
 and a newer one reads the default from an older runtime.
 

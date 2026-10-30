@@ -233,6 +233,9 @@ typedef enum {
 /** @brief Most constants one state model reads, its tables included. */
 #define LOOPER_MODEL_CONSTANTS 256u
 
+/** @brief Room for the model worker's name, from which the names of its parts follow. */
+#define LOOPER_MODEL_WORKER_NAME_CAPACITY 64u
+
 /** @brief Room for the name of the function a model library exports. */
 #define LOOPER_MODEL_SYMBOL_CAPACITY 64u
 

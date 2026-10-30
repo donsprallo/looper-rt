@@ -22,6 +22,7 @@ void looper_serve_set_signal_graph(const looper_request_t *request, looper_respo
         .system_count = request->signal_system_count,
         .models = request->signal_models,
         .model_count = request->signal_model_count,
+        .model_worker = request->model_worker,
     };
 
     if (looper_signal_graph_set(&graph, &reason)) {

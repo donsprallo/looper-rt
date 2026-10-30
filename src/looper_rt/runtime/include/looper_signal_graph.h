@@ -56,6 +56,8 @@ typedef struct {
     size_t system_count;
     const looper_state_model_t *models;
     size_t model_count;
+    /** The model worker that steps the interpreted models; NULL or empty for none. */
+    const char *model_worker;
 } looper_signal_graph_t;
 
 /** @brief How one model node of the running graph is doing. */

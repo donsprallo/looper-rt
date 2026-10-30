@@ -143,6 +143,9 @@ static bool decode_wide_field(
     if (field == REQUEST_FIELD_LABEL && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
         return looper_pb_read_string(reader, request->label, sizeof(request->label));
     }
+    if (field == REQUEST_FIELD_MODEL_WORKER && wire_type == LOOPER_PB_WIRE_LENGTH_DELIMITED) {
+        return looper_pb_read_string(reader, request->model_worker, sizeof(request->model_worker));
+    }
     if (field == REQUEST_FIELD_VALUE && wire_type == LOOPER_PB_WIRE_FIXED64) {
         return looper_pb_read_double(reader, &request->value);
     }

@@ -161,6 +161,65 @@ A system that is left unread for a very long time does not work off the
 backlog. When more than 100 000 steps are due, it jumps to the present
 instead.
 
+### Model nodes
+
+A node of kind `MODEL` holds a model that is not linear: friction,
+saturation, a motor. Its `step` is written in Python in the project.
+`looper-core` translates it to C and compiles it into a library of its own,
+or, when that is not possible, has the model worker step it in Python. The
+wire form is described in
+[State models on the wire](protocol.md#state-models-on-the-wire).
+
+The model steps at its **own fixed step**, like a linear system. When the
+firmware reads, it **catches up** to that moment in one call, with its inputs
+held at their current values, and answers with its latest outputs. Compiled,
+that is one call across the library boundary for all the steps due, not one
+per step. Interpreted, it is one request to the worker, whatever the number of
+steps. A model that is left unread for a very long time jumps to the present
+after 100 000 steps, as a linear system does.
+
+A model whose step produces NaN or infinity **stops**. It holds its last
+finite outputs, and `COMMAND_READ_SIGNAL_GRAPH` reports why. A reset with
+`COMMAND_RESET_MODEL` puts the state back to its initial value and lets the
+model run again.
+
+#### A compiled model
+
+The library is loaded with `LoadLibraryW` on Windows and `dlopen` elsewhere.
+The path arrives as UTF-8, as the control protocol carries it, and is
+converted for Windows. The library exports one function that returns a
+description of its model. `looper_model_abi.h` defines it:
+
+| Field | Meaning |
+| --- | --- |
+| `abi` | the version of the interface the library was built for, `LOOPER_MODEL_ABI` |
+| `states`, `inputs`, `outputs`, `constants` | the size of the model |
+| `advance` | the function that steps the model |
+
+The runtime checks the description against the request before it uses the
+library. A library built for another `abi`, or whose sizes differ from the
+request, is refused with a reason, and the library is unloaded again.
+`advance(state, constants, input, output, dt, steps)` takes all the steps in
+one call, so that the compiler can inline the step into its own loop.
+
+#### An interpreted model
+
+An interpreted model is stepped by the **model worker**, a Python process that
+`looper-core` starts beside the simulation, one per simulation. The two share
+one region of memory and two named semaphores: one for the request and one for
+the answer. The simulation writes a request into the memory and posts the first
+semaphore. The worker steps the model, writes the answer and posts the second.
+One request is out at a time, because the runtime has one thread.
+
+The worker may be held at a breakpoint for as long as its author likes, so
+there is no timeout. The simulation waits in rounds of 100 ms, and after each
+it asks whether the worker still lives. Only a worker that has ended is an
+error: every interpreted model then reports *the model worker ended*, and the
+firmware keeps running.
+
+The worker is written for Windows, Linux and macOS, but only the Windows side
+has been tried. Linux and macOS are untested.
+
 ### Capacities
 
 | Constant | Default | Limits |
@@ -169,6 +228,9 @@ instead.
 | `LOOPER_SIGNAL_GRAPH_SYSTEMS` | 8 | linear systems in a graph |
 | `LOOPER_LINEAR_STATES` | 8 | states of one system |
 | `LOOPER_LINEAR_PORTS` | 4 | inputs, and outputs, of one system |
+| `LOOPER_MODEL_STATES` | 64 | states of one state model |
+| `LOOPER_MODEL_PORTS` | 8 | inputs, and outputs, of one state model |
+| `LOOPER_MODEL_CONSTANTS` | 256 | constants of one state model |
 
 ## The journal
 

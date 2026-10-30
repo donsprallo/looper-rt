@@ -32,6 +32,8 @@ add_library(looperRuntime STATIC
     src/looper_journal.c
     src/looper_pace.c
     src/looper_model_library.c
+    src/looper_model_worker.c
+    src/looper_model_worker_platform.c
     src/looper_pb.c
     src/looper_pin_trace.c
     src/looper_profile.c
@@ -74,6 +76,11 @@ endif ()
 # dlopen, for compiled state models: libdl before glibc 2.34, nothing after,
 # and nothing on Windows or macOS, which is what CMAKE_DL_LIBS says.
 target_link_libraries(looperRuntime PUBLIC ${CMAKE_DL_LIBS})
+# shm_open and named semaphores for the model worker: librt and libpthread
+# before glibc 2.34, part of the C library after and everywhere else.
+if (UNIX AND NOT APPLE)
+    target_link_libraries(looperRuntime PUBLIC rt pthread)
+endif ()
 
 # The entry point every simulation shares. Kept apart because it prints, and
 # a project that wants the loop for itself simply does not link it.

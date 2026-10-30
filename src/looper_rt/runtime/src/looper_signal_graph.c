@@ -16,6 +16,7 @@
 #include "looper_gpio_model.h"
 #include "looper_linear_system.h"
 #include "looper_signal_graph_check.h"
+#include "looper_model_worker.h"
 #include "looper_state_model.h"
 #include "looper_watch.h"
 
@@ -81,11 +82,39 @@ static void close_runs(looper_model_run_t *runs, size_t count)
  * nothing: one that cannot be loaded lets go of those loaded before it,
  * and the old graph keeps running.
  */
+/* Whether the worker holds every interpreted model as the graph describes it. */
+static const char *worker_fault(const looper_signal_graph_t *graph)
+{
+    bool needed = false;
+    for (size_t index = 0u; index < graph->model_count; index++) {
+        needed |= graph->models[index].provider == LOOPER_MODEL_PROVIDER_INTERPRETED;
+    }
+    if (!needed) {
+        return NULL;
+    }
+    const char *fault = looper_model_worker_attach(graph->model_worker != NULL ? graph->model_worker : "");
+    for (size_t index = 0u; fault == NULL && index < graph->model_count; index++) {
+        const looper_state_model_t *model = &graph->models[index];
+        if (model->provider == LOOPER_MODEL_PROVIDER_INTERPRETED
+            && !looper_model_worker_holds(model->slot, model->inputs, model->outputs, model->states)) {
+            fault = "the model worker does not hold the model the graph names in that slot";
+        }
+    }
+    return fault;
+}
+
 static const char *open_models(const looper_signal_graph_t *graph, looper_model_run_t *opened)
 {
+    const char *fault = worker_fault(graph);
+    if (fault != NULL) {
+        return fault;
+    }
     for (size_t index = 0u; index < graph->model_count; index++) {
         looper_state_model_start(&graph->models[index], &opened[index]);
-        const char *fault = looper_model_library_open(&graph->models[index], &opened[index].library);
+        if (graph->models[index].provider == LOOPER_MODEL_PROVIDER_INTERPRETED) {
+            continue;
+        }
+        fault = looper_model_library_open(&graph->models[index], &opened[index].library);
         if (fault != NULL) {
             close_runs(opened, index);
             return fault;

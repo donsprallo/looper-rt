@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "looper_model_library.h"
+#include "looper_model_worker.h"
 #include "looper_types.h"
 
 /** @brief What one state model remembers between reads. */
@@ -31,6 +32,8 @@ typedef struct {
     bool started;
     /** Why it stopped, or NULL while it runs. */
     const char *fault;
+    /** What the worker said when the model's own step failed in Python. */
+    char fault_text[LOOPER_WORKER_FAULT];
 } looper_model_run_t;
 
 /**
