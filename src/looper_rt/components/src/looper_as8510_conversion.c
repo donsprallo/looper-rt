@@ -141,7 +141,7 @@ void looper_as8510_convert(looper_as8510_t *self)
         REGISTER_DREG_I1,
         counts_for(
             self,
-            looper_as8510_input(self, LOOPER_AS8510_INPUT_CURRENT),
+            looper_as8510_input(self, LOOPER_AS8510_CHANNEL_0),
             gain_of(self, PD_CTL_2_BYPASS_CURRENT_BIT, PGA_CTL_CURRENT_SHIFT)
         )
     );
@@ -150,7 +150,7 @@ void looper_as8510_convert(looper_as8510_t *self)
         REGISTER_DREG_V1,
         counts_for(
             self,
-            looper_as8510_input(self, LOOPER_AS8510_INPUT_VOLTAGE),
+            looper_as8510_input(self, LOOPER_AS8510_CHANNEL_1),
             gain_of(self, PD_CTL_2_BYPASS_VOLTAGE_BIT, PGA_CTL_VOLTAGE_SHIFT)
         )
     );
