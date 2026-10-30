@@ -28,9 +28,11 @@
  * @brief Largest frame either side will send.
  *
  * A reply holds a page of a trace rather than a whole one, so this is a
- * ceiling nothing reaches rather than a budget anybody spends.
+ * ceiling nothing reaches rather than a budget anybody spends. What comes
+ * closest is a signal graph with every state model at its largest: state,
+ * initial state and constants of eight models are some 48 KB.
  */
-#define LOOPER_FRAME_CAPACITY 32768u
+#define LOOPER_FRAME_CAPACITY 65536u
 
 /** @brief How far the frame being read has got. */
 typedef enum {

@@ -23,10 +23,10 @@
 #include <stdint.h>
 
 #define LOOPER_WORKER_MAGIC 0x574D504Cu
-#define LOOPER_WORKER_VERSION 1u
+#define LOOPER_WORKER_VERSION 2u
 #define LOOPER_WORKER_SLOTS 64u
 #define LOOPER_WORKER_PORTS 8u
-#define LOOPER_WORKER_STATES 64u
+#define LOOPER_WORKER_STATES 256u
 #define LOOPER_WORKER_FAULT 256u
 #include "looper_types.h"
 

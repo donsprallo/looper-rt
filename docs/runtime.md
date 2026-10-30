@@ -228,7 +228,7 @@ has been tried. Linux and macOS are untested.
 | `LOOPER_SIGNAL_GRAPH_SYSTEMS` | 8 | linear systems in a graph |
 | `LOOPER_LINEAR_STATES` | 8 | states of one system |
 | `LOOPER_LINEAR_PORTS` | 4 | inputs, and outputs, of one system |
-| `LOOPER_MODEL_STATES` | 64 | states of one state model |
+| `LOOPER_MODEL_STATES` | 256 | states of one state model, a vector counting one per value |
 | `LOOPER_MODEL_PORTS` | 8 | inputs, and outputs, of one state model |
 | `LOOPER_MODEL_CONSTANTS` | 256 | constants of one state model |
 

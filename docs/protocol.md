@@ -19,7 +19,7 @@ length:
 +--------------------+---------------------------+
 ```
 
-A frame is at most 32768 bytes. Both sides reject anything larger rather than
+A frame is at most 65536 bytes. Both sides reject anything larger rather than
 allocating on a peer's word.
 
 ## Commands
@@ -257,7 +257,7 @@ ways to hold those, and the runtime can take none of them:
 | Way | Why not |
 | --- | --- |
 | pointer fields | they allocate, and nothing allocates in the answer path |
-| static arrays | 512 samples, 512 pin changes, 192 profiles, 128 exchanges and 96 timings of 32 bands each, all present at once: over a hundred kilobytes in one structure, against a frame that may not exceed 32 KB |
+| static arrays | 512 samples, 512 pin changes, 192 profiles, 128 exchanges and 96 timings of 32 bands each, all present at once: over a hundred kilobytes in one structure, against a frame that may not exceed 64 KB |
 | callbacks | the repeated fields stay written by hand, which is what `looper_protocol_encode.c` already is |
 
 The second half of the reason is that `looper_pin_t`, `looper_channel_t` and

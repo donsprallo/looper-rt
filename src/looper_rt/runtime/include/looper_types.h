@@ -225,7 +225,7 @@ typedef enum {
 #define LOOPER_LINEAR_PORTS 4u
 
 /** @brief Most states one state model has. */
-#define LOOPER_MODEL_STATES 64u
+#define LOOPER_MODEL_STATES 256u
 
 /** @brief Most inputs, and most outputs, one state model has. */
 #define LOOPER_MODEL_PORTS 8u
