@@ -42,23 +42,47 @@ bool looper_mcp23x08_init(looper_mcp23x08_t *self, const looper_mcp23x08_config_
     return true;
 }
 
-/** @brief Register the eight pins so a client sees them beside the others. */
-static void register_pins(const looper_mcp23x08_t *self)
+/** @brief Tell the pin model about one pin: its label, direction and polarity. */
+static void register_pin(looper_mcp23x08_t *self, uint8_t pin)
 {
     const char *prefix = (self->config.pin_prefix != NULL) ? self->config.pin_prefix
                                                            : MODEL_NAME;
+    const char *named = (self->config.pin_labels != NULL) ? self->config.pin_labels[pin] : NULL;
+    const bool low = ((self->config.active_low_pins >> pin) & 1u) != 0u;
+    char label[LABEL_CAPACITY];
 
-    for (uint8_t pin = 0u; pin < LOOPER_MCP23X08_PIN_COUNT; pin++) {
-        char label[LABEL_CAPACITY];
-
+    if (named == NULL) {
         (void)snprintf(label, sizeof(label), "%s_%u", prefix, (unsigned)pin);
-        looper_gpio_register(
-            self->config.first_pin + pin,
-            label,
-            is_input(self, pin) ? LOOPER_PIN_DIRECTION_INPUT : LOOPER_PIN_DIRECTION_OUTPUT,
-            LOOPER_ACTIVE_POLARITY_HIGH
-        );
+        named = label;
     }
+    looper_gpio_register(
+        self->config.first_pin + pin,
+        named,
+        is_input(self, pin) ? LOOPER_PIN_DIRECTION_INPUT : LOOPER_PIN_DIRECTION_OUTPUT,
+        low ? LOOPER_ACTIVE_POLARITY_LOW : LOOPER_ACTIVE_POLARITY_HIGH
+    );
+}
+
+/** @brief Register the eight pins so a client sees them beside the others. */
+static void register_pins(looper_mcp23x08_t *self)
+{
+    for (uint8_t pin = 0u; pin < LOOPER_MCP23X08_PIN_COUNT; pin++) {
+        register_pin(self, pin);
+    }
+    self->announced_directions = self->registers[REGISTER_IODIR];
+}
+
+/** @brief Tell the pin model again about the pins whose direction the firmware changed. */
+static void announce_direction_changes(looper_mcp23x08_t *self)
+{
+    const uint8_t changed = self->announced_directions ^ self->registers[REGISTER_IODIR];
+
+    for (uint8_t pin = 0u; (changed != 0u) && (pin < LOOPER_MCP23X08_PIN_COUNT); pin++) {
+        if (((changed >> pin) & 1u) != 0u) {
+            register_pin(self, pin);
+        }
+    }
+    self->announced_directions = self->registers[REGISTER_IODIR];
 }
 
 /*
@@ -66,8 +90,8 @@ static void register_pins(const looper_mcp23x08_t *self)
  *
  * An output pin shows what the output latch holds; an input pin is whatever
  * a client drives it to, and that is what a read of GPIO reports. The
- * direction register can change at any time, so the pin model is told again
- * each pass rather than only at the start.
+ * direction register can change at any time; the pin model is told again
+ * whenever a transaction changed it.
  */
 static void run(void *instance, uint64_t microseconds)
 {
@@ -140,6 +164,8 @@ static bool exchange(
             write_byte(self, tx[index]);
         }
         self->pointer = tx[0] + (uint8_t)(tx_length - 1u);
+        /* The direction register may just have changed: the pin model follows at once. */
+        announce_direction_changes(self);
     }
     if (!self->pointer_set) {
         return false;

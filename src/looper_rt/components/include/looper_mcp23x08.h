@@ -41,12 +41,28 @@ typedef struct {
     uint32_t first_pin;
     /** @brief Prefix for the pin labels, or NULL for the model name. */
     const char *pin_prefix;
+    /**
+     * @brief Labels of the individual pins, or NULL to label them all by prefix.
+     *
+     * Eight entries, pin zero first. An entry that is NULL keeps the
+     * prefix and the pin number, so a board names only the pins it uses.
+     */
+    const char *const *pin_labels;
+    /**
+     * @brief The pins a client sees as active when they are low, one bit each.
+     *
+     * A button wired to ground is pressed when its pin reads low; saying so
+     * here is what lets the pin model report it as active then.
+     */
+    uint8_t active_low_pins;
 } looper_mcp23x08_config_t;
 
 /** @brief One MCP23x08. Treat the contents as private. */
 typedef struct {
     looper_mcp23x08_config_t config;
     uint8_t registers[LOOPER_MCP23X08_REGISTER_COUNT];
+    /** @brief The directions the pin model was last told, one bit per pin as in IODIR. */
+    uint8_t announced_directions;
     uint8_t pointer;
     bool pointer_set;
 } looper_mcp23x08_t;
